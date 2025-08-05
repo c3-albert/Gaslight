@@ -144,11 +144,14 @@ struct WriteForMeView: View {
     private func generateAdditionalText() {
         isGenerating = true
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        Task {
             let generator = AIEntryGenerator.shared
-            let continuation = generator.generateContinuation(for: entry.content, realityLevel: realityLevel)
-            additionalText = continuation
-            isGenerating = false
+            let continuation = await generator.generateContinuation(for: entry.content, realityLevel: realityLevel)
+            
+            await MainActor.run {
+                additionalText = continuation
+                isGenerating = false
+            }
         }
     }
     

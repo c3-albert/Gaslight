@@ -7,8 +7,18 @@
 
 import Foundation
 
-class AIEntryGenerator {
+enum AIGenerationMode {
+    case templates
+    case coreML
+    case hybrid
+}
+
+@MainActor
+class AIEntryGenerator: ObservableObject {
     static let shared = AIEntryGenerator()
+    
+    @Published var generationMode: AIGenerationMode = .templates
+    private let coreMLGenerator = CoreMLTextGenerator.shared
     
     private init() {}
     
@@ -53,10 +63,24 @@ class AIEntryGenerator {
         "surprising_result": ["impressive", "concerning", "unexpectedly therapeutic", "secretly my superpower", "absolutely terrible but endearing"]
     ]
     
-    func generateEntry(realityLevel: Double = 0.0) -> String {
-        // For now, use template-based generation
-        // Lower reality level = more absurd
-        
+    func generateEntry(realityLevel: Double = 0.0) async -> String {
+        switch generationMode {
+        case .templates:
+            return generateTemplateEntry(realityLevel: realityLevel)
+        case .coreML:
+            return await generateCoreMLEntry(realityLevel: realityLevel)
+        case .hybrid:
+            // Use Core ML for lower reality levels, templates for higher
+            if realityLevel < 0.5 {
+                return await generateCoreMLEntry(realityLevel: realityLevel)
+            } else {
+                return generateTemplateEntry(realityLevel: realityLevel)
+            }
+        }
+    }
+    
+    private func generateTemplateEntry(realityLevel: Double = 0.0) -> String {
+        // Original template-based generation
         guard let template = entryTemplates.randomElement() else {
             return "Today was a day. Things happened. I was there for most of it."
         }
@@ -91,7 +115,41 @@ class AIEntryGenerator {
         return result
     }
     
-    func enhanceUserEntry(_ originalText: String, realityLevel: Double) -> String {
+    private func generateCoreMLEntry(realityLevel: Double = 0.0) async -> String {
+        do {
+            // Ensure model is loaded
+            if !coreMLGenerator.isModelLoaded {
+                try await coreMLGenerator.loadModel()
+            }
+            
+            // Create a prompt based on reality level
+            let prompt = createPromptForRealityLevel(realityLevel)
+            
+            // Generate text using Core ML
+            let generated = try await coreMLGenerator.generateText(prompt: prompt, maxLength: 150)
+            
+            return generated
+            
+        } catch {
+            print("Core ML generation failed, falling back to templates: \(error)")
+            return generateTemplateEntry(realityLevel: realityLevel)
+        }
+    }
+    
+    private func createPromptForRealityLevel(_ realityLevel: Double) -> String {
+        if realityLevel < 0.3 {
+            // Very surreal prompts
+            return "Today I discovered something impossible:"
+        } else if realityLevel < 0.6 {
+            // Moderately strange prompts
+            return "Something unusual happened today that made me think:"
+        } else {
+            // More realistic prompts
+            return "Today I had an interesting experience:"
+        }
+    }
+    
+    func enhanceUserEntry(_ originalText: String, realityLevel: Double) async -> String {
         // Take user's real entry and make it slightly more absurd
         let enhancements = [
             " (At least, that's what I told myself.)",
@@ -108,7 +166,7 @@ class AIEntryGenerator {
         return originalText
     }
     
-    func generateContinuation(for existingText: String, realityLevel: Double) -> String {
+    func generateContinuation(for existingText: String, realityLevel: Double) async -> String {
         // Generate additional text that continues from the existing entry
         let continuations = [
             "Later that day, I realized something even more interesting.",

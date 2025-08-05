@@ -56,6 +56,8 @@ class GaslightSettings: ObservableObject {
 struct SettingsView: View {
     @EnvironmentObject private var settings: GaslightSettings
     @Environment(\.modelContext) private var modelContext
+    @StateObject private var aiGenerator = AIEntryGenerator.shared
+    @StateObject private var coreMLGenerator = CoreMLTextGenerator.shared
     
     var body: some View {
         NavigationView {
@@ -108,6 +110,51 @@ struct SettingsView: View {
                 }
                 
                 Section {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("AI Generation Mode")
+                            .font(.subheadline)
+                        
+                        Picker("AI Mode", selection: $aiGenerator.generationMode) {
+                            Text("Templates Only").tag(AIGenerationMode.templates)
+                            Text("Core ML Only").tag(AIGenerationMode.coreML)
+                            Text("Hybrid Mode").tag(AIGenerationMode.hybrid)
+                        }
+                        .pickerStyle(SegmentedPickerStyle())
+                        
+                        if aiGenerator.generationMode == .coreML || aiGenerator.generationMode == .hybrid {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Core ML Model Status")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                
+                                Text(coreMLGenerator.modelStatus)
+                                    .font(.caption)
+                                    .foregroundColor(coreMLGenerator.isModelLoaded ? .green : .orange)
+                                
+                                if !coreMLGenerator.isModelLoaded && !coreMLGenerator.isLoading {
+                                    Button("Load GPT-2 Model") {
+                                        Task {
+                                            try? await coreMLGenerator.loadModel()
+                                        }
+                                    }
+                                    .font(.caption)
+                                    .foregroundColor(.blue)
+                                }
+                                
+                                if coreMLGenerator.isLoading {
+                                    ProgressView(value: coreMLGenerator.loadingProgress)
+                                        .progressViewStyle(LinearProgressViewStyle())
+                                }
+                            }
+                        }
+                    }
+                } header: {
+                    Text("AI Engine")
+                } footer: {
+                    Text("Templates: Fast, creative responses. Core ML: On-device AI for more natural text. Hybrid: Best of both modes.")
+                }
+                
+                Section {
                     Button("Generate Test Entry") {
                         generateTestEntry()
                     }
@@ -128,83 +175,93 @@ struct SettingsView: View {
     }
     
     private func generateTestEntry() {
-        let generator = AIEntryGenerator.shared
-        let content = generator.generateEntry(realityLevel: 0.2) // Low reality for test
-        
-        let testEntry = JournalEntry(
-            content: content,
-            entryType: .aiGenerated,
-            realityLevel: 0.2
-        )
-        
-        modelContext.insert(testEntry)
-        
-        do {
-            try modelContext.save()
-        } catch {
-            print("Failed to save test entry: \(error)")
+        Task {
+            let generator = AIEntryGenerator.shared
+            let content = await generator.generateEntry(realityLevel: 0.2) // Low reality for test
+            
+            let testEntry = JournalEntry(
+                content: content,
+                entryType: .aiGenerated,
+                realityLevel: 0.2
+            )
+            
+            await MainActor.run {
+                modelContext.insert(testEntry)
+                
+                do {
+                    try modelContext.save()
+                } catch {
+                    print("Failed to save test entry: \(error)")
+                }
+            }
         }
     }
     
     private func generateBulkEntries() {
-        let generator = AIEntryGenerator.shared
-        let calendar = Calendar.current
-        let today = Date()
-        
-        // Generate entries for the past 30 days
-        for daysBack in 0...30 {
-            guard let entryDate = calendar.date(byAdding: .day, value: -daysBack, to: today) else { continue }
+        Task {
+            let generator = AIEntryGenerator.shared
+            let calendar = Calendar.current
+            let today = Date()
             
-            // Randomly decide how many entries for this day (0-3)
-            let entriesForDay = Int.random(in: 0...3)
-            
-            for _ in 0..<entriesForDay {
-                // Randomize the time of day
-                let hour = Int.random(in: 6...23)
-                let minute = Int.random(in: 0...59)
+            // Generate entries for the past 30 days
+            for daysBack in 0...30 {
+                guard let entryDate = calendar.date(byAdding: .day, value: -daysBack, to: today) else { continue }
                 
-                guard let finalDate = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: entryDate) else { continue }
+                // Randomly decide how many entries for this day (0-3)
+                let entriesForDay = Int.random(in: 0...3)
                 
-                // Randomly choose entry type
-                let entryTypes: [EntryType] = [.userWritten, .aiGenerated, .aiEnhanced]
-                let entryType = entryTypes.randomElement() ?? .userWritten
-                
-                // Generate appropriate content
-                let realityLevel = Double.random(in: 0.1...1.0)
-                let content: String
-                let originalContent: String?
-                
-                switch entryType {
-                case .userWritten:
-                    content = generateRealisticUserContent(for: finalDate)
-                    originalContent = nil
-                case .aiGenerated:
-                    content = generator.generateEntry(realityLevel: realityLevel)
-                    originalContent = nil
-                case .aiEnhanced:
-                    let original = generateRealisticUserContent(for: finalDate)
-                    content = generator.enhanceUserEntry(original, realityLevel: realityLevel)
-                    originalContent = original
+                for _ in 0..<entriesForDay {
+                    // Randomize the time of day
+                    let hour = Int.random(in: 6...23)
+                    let minute = Int.random(in: 0...59)
+                    
+                    guard let finalDate = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: entryDate) else { continue }
+                    
+                    // Randomly choose entry type
+                    let entryTypes: [EntryType] = [.userWritten, .aiGenerated, .aiEnhanced]
+                    let entryType = entryTypes.randomElement() ?? .userWritten
+                    
+                    // Generate appropriate content
+                    let realityLevel = Double.random(in: 0.1...1.0)
+                    let content: String
+                    let originalContent: String?
+                    
+                    switch entryType {
+                    case .userWritten:
+                        content = generateRealisticUserContent(for: finalDate)
+                        originalContent = nil
+                    case .aiGenerated:
+                        content = await generator.generateEntry(realityLevel: realityLevel)
+                        originalContent = nil
+                    case .aiEnhanced:
+                        let original = generateRealisticUserContent(for: finalDate)
+                        content = await generator.enhanceUserEntry(original, realityLevel: realityLevel)
+                        originalContent = original
+                    }
+                    
+                    // Create entry with custom date
+                    let entry = JournalEntry(
+                        content: content,
+                        entryType: entryType,
+                        realityLevel: realityLevel,
+                        originalContent: originalContent,
+                        createdDate: finalDate
+                    )
+                    
+                    await MainActor.run {
+                        modelContext.insert(entry)
+                    }
                 }
-                
-                // Create entry with custom date
-                let entry = JournalEntry(
-                    content: content,
-                    entryType: entryType,
-                    realityLevel: realityLevel,
-                    originalContent: originalContent,
-                    createdDate: finalDate
-                )
-                
-                modelContext.insert(entry)
             }
-        }
-        
-        do {
-            try modelContext.save()
-            print("Generated bulk entries for past 30 days")
-        } catch {
-            print("Failed to save bulk entries: \(error)")
+            
+            await MainActor.run {
+                do {
+                    try modelContext.save()
+                    print("Generated bulk entries for past 30 days")
+                } catch {
+                    print("Failed to save bulk entries: \(error)")
+                }
+            }
         }
     }
     

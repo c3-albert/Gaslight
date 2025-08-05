@@ -252,11 +252,15 @@ struct ContentView: View {
             return
         }
         
-        let generator = AIEntryGenerator.shared
-        let gaslightedContent = generator.enhanceUserEntry(originalText, realityLevel: realityLevel)
-        
-        journalText = gaslightedContent
-        isGaslighted = true
+        Task {
+            let generator = AIEntryGenerator.shared
+            let gaslightedContent = await generator.enhanceUserEntry(originalText, realityLevel: realityLevel)
+            
+            await MainActor.run {
+                journalText = gaslightedContent
+                isGaslighted = true
+            }
+        }
     }
     
     private func revertToOriginal() {
@@ -265,17 +269,21 @@ struct ContentView: View {
     }
     
     private func writeForMe() {
-        let generator = AIEntryGenerator.shared
-        let additionalText = generator.generateContinuation(for: originalText, realityLevel: realityLevel)
-        
-        // Append the generated text to existing content
-        if !journalText.isEmpty {
-            journalText += "\n\n" + additionalText
-        } else {
-            journalText = additionalText
+        Task {
+            let generator = AIEntryGenerator.shared
+            let additionalText = await generator.generateContinuation(for: originalText, realityLevel: realityLevel)
+            
+            await MainActor.run {
+                // Append the generated text to existing content
+                if !journalText.isEmpty {
+                    journalText += "\n\n" + additionalText
+                } else {
+                    journalText = additionalText
+                }
+                
+                // Update original text to include the new content
+                originalText = journalText
+            }
         }
-        
-        // Update original text to include the new content
-        originalText = journalText
     }
 }
