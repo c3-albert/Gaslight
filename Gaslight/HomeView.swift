@@ -10,41 +10,18 @@ import SwiftData
 
 struct HomeView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var entries: [JournalEntry]
+    @Query(sort: \JournalEntry.createdDate, order: .reverse)
+    private var allEntries: [JournalEntry]
     
-    // Mock AI suggestions for now
-    private let suggestions = [
-        AISuggestion(
-            title: "Reflect on Your Morning Routine",
-            description: "Based on your recent entries about productivity, explore how your morning sets the tone for your entire day.",
-            imageName: "sunrise.fill",
-            backgroundColor: .orange
-        ),
-        AISuggestion(
-            title: "Weekend Adventure Memories",
-            description: "You've mentioned wanting more excitement. Write about a perfect weekend adventure you'd love to experience.",
-            imageName: "mountain.2.fill",
-            backgroundColor: .green
-        ),
-        AISuggestion(
-            title: "Coffee Shop Conversations",
-            description: "Your entries show you enjoy social connections. Imagine an interesting conversation with a stranger at your favorite café.",
-            imageName: "cup.and.saucer.fill",
-            backgroundColor: .brown
-        ),
-        AISuggestion(
-            title: "Late Night Thoughts",
-            description: "Explore those deep thoughts that come to you when the world is quiet and your mind starts wandering.",
-            imageName: "moon.stars.fill",
-            backgroundColor: .indigo
-        ),
-        AISuggestion(
-            title: "Creative Breakthrough",
-            description: "Based on your work patterns, write about a moment when everything clicks and creativity flows freely.",
-            imageName: "lightbulb.fill",
-            backgroundColor: .yellow
-        )
-    ]
+    @State private var suggestedEntry: String = ""
+    @State private var isGeneratingEntry = false
+    @StateObject private var coreMLGenerator = CoreMLTextGenerator.shared
+    
+    private var recentEntries: [JournalEntry] {
+        // Analyze up to 60 entries (not exactly 60) - take what's available
+        let maxEntries = min(60, allEntries.count)
+        return Array(allEntries.prefix(maxEntries))
+    }
     
     var body: some View {
         NavigationView {
@@ -68,7 +45,7 @@ struct HomeView: View {
                             
                             // Stats circle
                             VStack {
-                                Text("\(entries.count)")
+                                Text("\(allEntries.count)")
                                     .font(.title2)
                                     .fontWeight(.bold)
                                     .foregroundColor(.blue)
@@ -81,19 +58,17 @@ struct HomeView: View {
                         }
                         .padding(.horizontal)
                         .padding(.top, 20)
-                        
-                        Text("AI-Powered Writing Suggestions")
-                            .font(.headline)
-                            .fontWeight(.semibold)
-                            .padding(.horizontal)
-                            .padding(.top, 8)
                     }
                     
-                    // Suggestion cards
-                    ForEach(suggestions, id: \.title) { suggestion in
-                        SuggestionCardView(suggestion: suggestion)
-                            .padding(.horizontal)
-                    }
+                    // Suggested journal entry card
+                    SuggestedEntryCardView(
+                        suggestedEntry: suggestedEntry,
+                        isGenerating: isGeneratingEntry || coreMLGenerator.isGenerating,
+                        generationProgress: coreMLGenerator.generationProgress,
+                        onGenerate: generateSuggestedEntry,
+                        onUse: useSuggestedEntry
+                    )
+                    .padding(.horizontal)
                     
                     // Bottom spacing for floating button
                     Spacer()
@@ -102,75 +77,93 @@ struct HomeView: View {
             }
             .navigationTitle("")
             .navigationBarHidden(true)
+            .onAppear {
+                if suggestedEntry.isEmpty && !recentEntries.isEmpty {
+                    generateSuggestedEntry()
+                }
+            }
+        }
+    }
+    
+    private func generateSuggestedEntry() {
+        guard !recentEntries.isEmpty else {
+            suggestedEntry = "Start writing your first journal entry to see personalized suggestions here!"
+            return
+        }
+        
+        isGeneratingEntry = true
+        
+        Task {
+            let generator = AIEntryGenerator.shared
+            let recentContent = extractRecentContent()
+            
+            // Use contextual Core ML generation with user history
+            let entry = await generator.generateCoreMLEntry(
+                realityLevel: 0.7, // Mix of real and creative
+                recentEntries: recentContent
+            )
+            
+            await MainActor.run {
+                suggestedEntry = entry
+                isGeneratingEntry = false
+            }
+        }
+    }
+    
+    private func extractRecentContent() -> [String] {
+        return recentEntries.map { $0.content }
+    }
+    
+    private func useSuggestedEntry() {
+        guard !suggestedEntry.isEmpty else { return }
+        
+        // Create and save the suggested entry as a new journal entry
+        let newEntry = JournalEntry(
+            content: suggestedEntry,
+            entryType: .aiGenerated,
+            realityLevel: 0.7, // Mix of real and creative
+            createdDate: Date()
+        )
+        
+        modelContext.insert(newEntry)
+        
+        do {
+            try modelContext.save()
+            print("✅ Saved suggested entry as new journal entry")
+            
+            // Clear the suggestion after successful save
+            self.suggestedEntry = ""
+        } catch {
+            print("❌ Failed to save suggested entry: \(error)")
         }
     }
 }
 
-struct AISuggestion {
-    let title: String
-    let description: String
-    let imageName: String
-    let backgroundColor: Color
-}
-
-struct SuggestionCardView: View {
-    let suggestion: AISuggestion
+struct SuggestedEntryCardView: View {
+    let suggestedEntry: String
+    let isGenerating: Bool
+    let generationProgress: Double
+    let onGenerate: () -> Void
+    let onUse: () -> Void
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // AI-generated image placeholder
-            ZStack {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            gradient: Gradient(colors: [
-                                suggestion.backgroundColor.opacity(0.8),
-                                suggestion.backgroundColor.opacity(0.6)
-                            ]),
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(height: 140)
-                
-                VStack {
-                    Image(systemName: suggestion.imageName)
-                        .font(.system(size: 40, weight: .medium))
-                        .foregroundColor(.white)
-                        .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
-                    
-                    Text("AI Generated")
-                        .font(.caption2)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white.opacity(0.8))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.black.opacity(0.2))
-                        .cornerRadius(8)
-                }
-            }
-            
-            // Content section
-            VStack(alignment: .leading, spacing: 12) {
-                Text(suggestion.title)
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.primary)
-                    .multilineTextAlignment(.leading)
-                
-                Text(suggestion.description)
-                    .font(.body)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(3)
-                
+        VStack(alignment: .leading, spacing: 16) {
+            // Header
+            VStack(alignment: .leading, spacing: 8) {
                 HStack {
+                    Text("Your Suggested Journal Entry")
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
+                    
+                    Spacer()
+                    
                     // AI indicator
                     HStack(spacing: 4) {
                         Image(systemName: "sparkles")
                             .font(.caption)
                             .foregroundColor(.orange)
-                        Text("AI Suggestion")
+                        Text("AI Generated")
                             .font(.caption)
                             .fontWeight(.medium)
                             .foregroundColor(.orange)
@@ -179,26 +172,99 @@ struct SuggestionCardView: View {
                     .padding(.vertical, 4)
                     .background(Color.orange.opacity(0.1))
                     .cornerRadius(6)
-                    
-                    Spacer()
-                    
-                    // Action button
-                    Button(action: {
-                        // TODO: Implement suggestion selection
-                    }) {
-                        Text("Start Writing")
+                }
+                
+                Text("Based on your writing style from recent entries")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            // Entry content
+            VStack(alignment: .leading, spacing: 12) {
+                if isGenerating {
+                    VStack(spacing: 12) {
+                        HStack {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                            Text("Generating your journal entry...")
+                                .font(.body)
+                                .foregroundColor(.secondary)
+                                .italic()
+                        }
+                        
+                        // Progress bar
+                        VStack(spacing: 4) {
+                            HStack {
+                                Text("Progress")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Text("\(Int(generationProgress * 100))%")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            ProgressView(value: generationProgress)
+                                .progressViewStyle(LinearProgressViewStyle(tint: .orange))
+                                .scaleEffect(x: 1, y: 0.5)
+                        }
+                    }
+                    .frame(minHeight: 80, alignment: .center)
+                } else if suggestedEntry.isEmpty {
+                    Text("Start writing your first journal entry to see personalized suggestions here!")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .italic()
+                        .frame(minHeight: 80, alignment: .center)
+                } else {
+                    ScrollView {
+                        Text(suggestedEntry)
+                            .font(.body)
+                            .foregroundColor(.primary)
+                            .multilineTextAlignment(.leading)
+                            .padding(12)
+                    }
+                    .frame(maxHeight: 120)
+                    .background(Color(.secondarySystemBackground))
+                    .cornerRadius(8)
+                }
+            }
+            
+            // Action buttons
+            HStack(spacing: 12) {
+                Button(action: onGenerate) {
+                    HStack {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.caption)
+                        Text("Generate New")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                    }
+                    .foregroundColor(.blue)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(8)
+                }
+                .disabled(isGenerating)
+                
+                Spacer()
+                
+                if !suggestedEntry.isEmpty && !isGenerating {
+                    Button(action: onUse) {
+                        Text("Use This Entry")
                             .font(.caption)
                             .fontWeight(.semibold)
                             .foregroundColor(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
                             .background(Color.blue)
                             .cornerRadius(8)
                     }
                 }
             }
-            .padding(16)
         }
+        .padding(16)
         .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 4)

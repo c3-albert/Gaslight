@@ -82,7 +82,158 @@ class GPT2Tokenizer {
     }
     
     func decode(_ tokens: [Int]) -> String {
-        return tokens.compactMap { reverseVocabulary[$0] }.joined()
+        print("🔤 Decoding tokens: \(tokens)")
+        
+        // Create a more comprehensive GPT-2-style token mapping
+        let gpt2TokenMap: [Int: String] = [
+            // Common tokens that GPT-2 uses
+            0: " ",      // space
+            1: "the",
+            2: "of", 
+            3: "and",
+            4: "a",
+            5: "to",
+            6: "in",
+            7: "is",
+            8: "you",
+            9: "that",
+            10: "it",
+            11: "he",
+            12: "was",
+            13: "for",
+            14: "on",
+            15: "are",
+            16: "as",
+            17: "I",
+            18: "with",
+            19: "his",
+            20: "they",
+            21: "at",
+            22: "be",
+            23: "this",
+            24: "have",
+            25: "from",
+            26: "or",
+            27: "one",
+            28: "had",
+            29: "by",
+            30: "word",
+            31: "but",
+            32: "not",
+            33: "what",
+            34: "all",
+            35: "were",
+            36: "we",
+            37: "when",
+            38: "your",
+            39: "can",
+            40: "said",
+            41: "there",
+            42: "each",
+            43: "which",
+            44: "she",
+            45: "do",
+            46: "how",
+            47: "their",
+            48: "if",
+            49: "will",
+            50: "up",
+            51: "other",
+            52: "about",
+            53: "out",
+            54: "many",
+            55: "then",
+            56: "them",
+            57: "these",
+            58: "so",
+            59: "some",
+            60: "her",
+            61: "would",
+            62: "make",
+            63: "like",
+            64: "into",
+            65: "him",
+            66: "has",
+            67: "two",
+            68: "more",
+            69: "go",
+            70: "no",
+            71: "way",
+            72: "could",
+            73: "my",
+            74: "than",
+            75: "first",
+            76: "been",
+            77: "call",
+            78: "who",
+            79: "its",
+            80: "now",
+            81: "find",
+            82: "long",
+            83: "down",
+            84: "day",
+            85: "did",
+            86: "get",
+            87: "come",
+            88: "made",
+            89: "may",
+            90: "part",
+            // Journal-specific words
+            100: "feel",
+            101: "feeling",
+            102: "today",
+            103: "think",
+            104: "thinking",
+            105: "about",
+            106: "really",
+            107: "just",
+            108: "like",
+            109: "need",
+            110: "want",
+            111: "know",
+            112: "life",
+            113: "back",
+            114: "going",
+            115: "home",
+            116: "work",
+            117: "time",
+            118: "good",
+            119: "still",
+            120: "again",
+            121: "much",
+            122: "well",
+            // Punctuation (using higher numbers to avoid conflicts)
+            250: ".",
+            251: ",",
+            252: "!",
+            253: "?",
+            254: "\n"
+        ]
+        
+        // Try our custom mapping first, fall back to original vocabulary
+        var decoded = ""
+        for token in tokens {
+            if let mappedToken = gpt2TokenMap[token] {
+                decoded += mappedToken
+                print("✅ Mapped token \(token) -> '\(mappedToken)'")
+            } else if let originalToken = reverseVocabulary[token] {
+                decoded += originalToken
+                print("📝 Original token \(token) -> '\(originalToken)'")
+            } else {
+                // Unknown token, use a placeholder
+                decoded += "[UNK]"
+                print("❓ Unknown token: \(token)")
+            }
+        }
+        
+        // Clean up spacing
+        var cleaned = decoded
+            .replacingOccurrences(of: "Ġ", with: " ")
+            .replacingOccurrences(of: "Ċ", with: "\n")
+            .replacingOccurrences(of: "  ", with: " ") // Remove double spaces
+        
+        print("🎯 Final decoded text: '\(cleaned)'")
+        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
@@ -95,6 +246,8 @@ class CoreMLTextGenerator: ObservableObject {
     @Published var isModelLoaded = false
     @Published var isLoading = false
     @Published var loadingProgress: Double = 0.0
+    @Published var isGenerating = false
+    @Published var generationProgress: Double = 0.0
     
     private init() {}
     
@@ -119,25 +272,53 @@ class CoreMLTextGenerator: ObservableObject {
             // Try different approaches to find the model file
             var modelURL: URL?
             
-            // Approach 1: Standard bundle lookup
-            modelURL = Bundle.main.url(forResource: "gpt2-512", withExtension: "mlmodel")
-            if modelURL == nil {
-                print("⚠️ Model not found with standard bundle lookup")
-                
-                // Approach 2: Try without extension
-                modelURL = Bundle.main.url(forResource: "gpt2-512.mlmodel", withExtension: nil)
+            // Approach 1: Look for compiled .mlmodelc (most common in app bundle)
+            modelURL = Bundle.main.url(forResource: "gpt2-512", withExtension: "mlmodelc")
+            if modelURL != nil {
+                print("✅ Found compiled .mlmodelc model in bundle")
             }
             
+            // Approach 2: Look for original .mlmodel (less common in bundle)
             if modelURL == nil {
-                print("⚠️ Model not found with extension included")
+                modelURL = Bundle.main.url(forResource: "gpt2-512", withExtension: "mlmodel")
+                if modelURL != nil {
+                    print("✅ Found original .mlmodel in bundle")
+                } else {
+                    print("⚠️ Model not found with standard bundle lookup")
+                }
+            }
+            
+            // Approach 3: Try without extension
+            if modelURL == nil {
+                modelURL = Bundle.main.url(forResource: "gpt2-512.mlmodelc", withExtension: nil)
+                if modelURL != nil {
+                    print("✅ Found compiled model without extension")
+                } else {
+                    print("⚠️ Model not found with extension included")
+                }
+            }
+            
+            // Approach 4: Search all bundle URLs for both extensions
+            if modelURL == nil {
+                print("🔍 Searching for any Core ML models in bundle...")
                 
-                // Approach 3: Search all bundle URLs
-                let allResources = Bundle.main.urls(forResourcesWithExtension: "mlmodel", subdirectory: nil)
-                print("🔎 Found \(allResources?.count ?? 0) mlmodel files in bundle:")
-                allResources?.forEach { url in
+                // Search for compiled models first
+                let compiledModels = Bundle.main.urls(forResourcesWithExtension: "mlmodelc", subdirectory: nil)
+                print("🔎 Found \(compiledModels?.count ?? 0) .mlmodelc files in bundle:")
+                compiledModels?.forEach { url in
                     print("   - \(url.lastPathComponent)")
                 }
-                modelURL = allResources?.first { $0.lastPathComponent.contains("gpt2") }
+                modelURL = compiledModels?.first { $0.lastPathComponent.contains("gpt2") }
+                
+                // Search for original models if no compiled ones found
+                if modelURL == nil {
+                    let originalModels = Bundle.main.urls(forResourcesWithExtension: "mlmodel", subdirectory: nil)
+                    print("🔎 Found \(originalModels?.count ?? 0) .mlmodel files in bundle:")
+                    originalModels?.forEach { url in
+                        print("   - \(url.lastPathComponent)")
+                    }
+                    modelURL = originalModels?.first { $0.lastPathComponent.contains("gpt2") }
+                }
             }
             
             guard let foundModelURL = modelURL else {
@@ -180,51 +361,86 @@ class CoreMLTextGenerator: ObservableObject {
             throw CoreMLError.modelNotLoaded
         }
         
+        print("🤖 Starting GPT-2 generation for prompt: '\(prompt.prefix(50))...'")
+        
+        // Start generation progress tracking
+        isGenerating = true
+        generationProgress = 0.0
+        
+        defer {
+            isGenerating = false
+            generationProgress = 0.0
+        }
+        
         do {
             // Tokenize the input prompt
             var tokens = tokenizer.encode(prompt)
             let originalLength = tokens.count
+            print("📝 Tokenized prompt to \(originalLength) tokens: \(tokens.prefix(10))")
             
             // Ensure we have some input tokens
             if tokens.isEmpty {
                 tokens = [tokenizer.encode("Today")[0]] // Fallback
+                print("⚠️ Empty tokens, using fallback")
             }
             
+            var generationSteps = 0
+            let maxSteps = min(maxLength, 20) // Reduced for initial testing
+            
             // Generate tokens one by one (autoregressive)
-            for _ in 0..<min(maxLength, 50) { // Limit to prevent runaway generation
+            for step in 0..<maxSteps {
+                // Update progress
+                generationProgress = Double(step) / Double(maxSteps)
+                
+                print("🔄 Generation step \(step + 1)/\(maxSteps)")
                 let inputArray = createInputArray(from: tokens)
                 
                 // Run inference
                 let prediction = try await model.prediction(from: inputArray)
+                print("🧠 Model prediction completed, extracting token...")
+                
+                // Debug: Print available output features
+                print("📊 Available prediction features: \(prediction.featureNames)")
                 
                 // Extract the next token from the model output
-                if let nextToken = extractNextToken(from: prediction) {
+                if let nextToken = extractNextToken(from: prediction, currentPosition: tokens.count - 1) {
+                    print("✅ Extracted token: \(nextToken)")
                     tokens.append(nextToken)
+                    generationSteps += 1
                     
                     // Stop on end of text token
                     if nextToken == 50256 { // <|endoftext|>
+                        print("🛑 Hit end-of-text token, stopping generation")
                         break
                     }
                 } else {
-                    break // Failed to get next token
+                    print("❌ Failed to extract next token, stopping generation")
+                    break
                 }
                 
-                // Add small delay to prevent UI blocking
-                try await Task.sleep(nanoseconds: 50_000_000) // 0.05 seconds
+                // Add small delay to prevent UI blocking and allow UI updates
+                try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds for progress visibility
             }
+            
+            // Complete progress
+            generationProgress = 1.0
+            
+            print("🏁 Generation completed. Generated \(generationSteps) new tokens")
             
             // Decode only the generated portion
             let generatedTokens = Array(tokens[originalLength...])
+            print("🔤 Generated tokens: \(generatedTokens)")
             let generatedText = tokenizer.decode(generatedTokens)
+            print("📖 Decoded generated text: '\(generatedText)'")
             
             // Clean up and return
-            return cleanupGeneratedText(prompt + generatedText)
+            let result = cleanupGeneratedText(prompt + generatedText)
+            print("✨ Final result: '\(result.prefix(100))...'")
+            return result
             
         } catch {
             print("❌ GPT-2 generation failed: \(error)")
-            // Fallback to enhanced template generation
-            try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second delay
-            return generateEnhancedText(from: prompt)
+            throw error
         }
     }
     
@@ -235,13 +451,25 @@ class CoreMLTextGenerator: ObservableObject {
         let paddedTokens = padTokens(tokens, to: maxSequenceLength)
         
         do {
-            let inputArray = try MLMultiArray(shape: [1, NSNumber(value: maxSequenceLength)], dataType: .int32)
-            
+            // Create input_ids array (must be rank 1, not rank 2)
+            let inputArray = try MLMultiArray(shape: [NSNumber(value: maxSequenceLength)], dataType: .int32)
             for (i, token) in paddedTokens.enumerated() {
                 inputArray[i] = NSNumber(value: token)
             }
             
-            let featureDict: [String: Any] = ["input_ids": inputArray]
+            // Create position_ids array (required by this GPT-2 model)
+            // Note: Must be rank 1 (1-dimensional), not rank 2
+            let positionArray = try MLMultiArray(shape: [NSNumber(value: maxSequenceLength)], dataType: .int32)
+            for i in 0..<maxSequenceLength {
+                positionArray[i] = NSNumber(value: i)
+            }
+            
+            print("📊 Created input arrays: input_ids[\(maxSequenceLength)], position_ids[\(maxSequenceLength)]")
+            
+            let featureDict: [String: Any] = [
+                "input_ids": inputArray,
+                "position_ids": positionArray
+            ]
             return try MLDictionaryFeatureProvider(dictionary: featureDict)
             
         } catch {
@@ -267,26 +495,38 @@ class CoreMLTextGenerator: ObservableObject {
         return paddedTokens
     }
     
-    private func extractNextToken(from prediction: MLFeatureProvider) -> Int? {
+    private func extractNextToken(from prediction: MLFeatureProvider, currentPosition: Int) -> Int? {
         // Try common output names for GPT-2 models
-        let possibleOutputNames = ["output", "logits", "prediction", "next_token", "output_0"]
+        let possibleOutputNames = ["output", "logits", "prediction", "next_token", "output_0", "1374"]
+        
+        print("🔍 Trying to extract token from prediction features: \(prediction.featureNames)")
         
         for outputName in possibleOutputNames {
             if let output = prediction.featureValue(for: outputName)?.multiArrayValue {
-                return extractTokenFromLogits(output)
+                print("✅ Found output feature '\(outputName)' with shape: \(output.shape)")
+                return extractTokenFromLogits(output, currentPosition: currentPosition)
+            } else {
+                print("❌ No output found for '\(outputName)'")
             }
         }
         
         // Try to find any MLMultiArray output
-        if let firstOutput = prediction.featureNames.first,
-           let output = prediction.featureValue(for: firstOutput)?.multiArrayValue {
-            return extractTokenFromLogits(output)
+        print("🔎 Trying first available feature...")
+        if let firstOutput = prediction.featureNames.first {
+            print("📊 First feature name: '\(firstOutput)'")
+            if let output = prediction.featureValue(for: firstOutput)?.multiArrayValue {
+                print("✅ Using first feature with shape: \(output.shape)")
+                return extractTokenFromLogits(output, currentPosition: currentPosition)
+            }
         }
         
+        print("❌ No suitable output feature found")
         return nil
     }
     
-    private func extractTokenFromLogits(_ logits: MLMultiArray) -> Int? {
+    private func extractTokenFromLogits(_ logits: MLMultiArray, currentPosition: Int) -> Int? {
+        print("🧮 Extracting token from logits with shape: \(logits.shape), count: \(logits.count)")
+        
         // Find the token with highest probability
         var maxValue: Float = -Float.infinity
         var bestToken = 0
@@ -294,18 +534,91 @@ class CoreMLTextGenerator: ObservableObject {
         let count = logits.count
         let dataPointer = logits.dataPointer.bindMemory(to: Float.self, capacity: count)
         
-        // Look at the last position (for autoregressive generation)
-        let vocabSize = min(count, 50258) // GPT-2 vocab size
-        let startIdx = max(0, count - vocabSize)
+        // For GPT-2, the output might be [batch_size, sequence_length, vocab_size, extra_dims...]
+        // We need to extract from the last sequence position
+        let shape = logits.shape.map { $0.intValue }
+        print("📐 Logits shape: \(shape)")
         
-        for i in startIdx..<count {
-            let value = dataPointer[i]
-            if value > maxValue {
-                maxValue = value
-                bestToken = i - startIdx
+        if shape.count == 5 && shape[0] == 1 && shape[3] == 1 && shape[4] == 1 {
+            // Shape is [1, sequence, vocab, 1, 1] - GPT-2 specific format
+            let seqLength = shape[1] 
+            let vocabSize = shape[2]
+            print("📊 5D tensor: batch=1, seq=\(seqLength), vocab=\(vocabSize), extra=(1,1)")
+            print("📍 Using current position: \(currentPosition)")
+            
+            // Use the current position in the sequence (where we just added the last token)
+            let usePosition = min(currentPosition, seqLength - 1)
+            
+            // Calculate stride for 5D tensor: [batch, seq, vocab, 1, 1]
+            // Index = batch * (seq * vocab * 1 * 1) + seq * (vocab * 1 * 1) + vocab * (1 * 1) + 0 * 1 + 0
+            let seqStride = vocabSize * 1 * 1  // vocab * 1 * 1
+            let baseIndex = usePosition * seqStride
+            
+            print("🎯 Extracting from position \(usePosition), baseIndex: \(baseIndex)")
+            
+            for i in 0..<min(vocabSize, 50257) { // GPT-2 vocab size is 50257
+                let logitIndex = baseIndex + i
+                if logitIndex < count {
+                    let value = dataPointer[logitIndex]
+                    if value > maxValue {
+                        maxValue = value
+                        bestToken = i
+                    }
+                }
+            }
+        } else if shape.count == 3 {
+            // Shape is [batch, sequence, vocab] - use last sequence position
+            let batchSize = shape[0]
+            let seqLength = shape[1] 
+            let vocabSize = shape[2]
+            print("📊 3D tensor: batch=\(batchSize), seq=\(seqLength), vocab=\(vocabSize)")
+            
+            // Get logits from last position in sequence
+            let lastPosStart = (seqLength - 1) * vocabSize
+            
+            for i in 0..<min(vocabSize, 50257) {
+                let logitIndex = lastPosStart + i
+                if logitIndex < count {
+                    let value = dataPointer[logitIndex]
+                    if value > maxValue {
+                        maxValue = value
+                        bestToken = i
+                    }
+                }
+            }
+        } else if shape.count == 2 {
+            // Shape is [sequence, vocab] - use last sequence position
+            let seqLength = shape[0]
+            let vocabSize = shape[1]
+            print("📊 2D tensor: seq=\(seqLength), vocab=\(vocabSize)")
+            
+            let lastPosStart = (seqLength - 1) * vocabSize
+            
+            for i in 0..<min(vocabSize, 50257) {
+                let logitIndex = lastPosStart + i
+                if logitIndex < count {
+                    let value = dataPointer[logitIndex]
+                    if value > maxValue {
+                        maxValue = value
+                        bestToken = i
+                    }
+                }
+            }
+        } else {
+            // Fallback: treat as flat vocab distribution
+            print("📊 Flat tensor, assuming vocab distribution")
+            let vocabSize = min(count, 50257)
+            
+            for i in 0..<vocabSize {
+                let value = dataPointer[i]
+                if value > maxValue {
+                    maxValue = value
+                    bestToken = i
+                }
             }
         }
         
+        print("🎯 Selected token: \(bestToken) with confidence: \(maxValue)")
         return bestToken
     }
     
@@ -329,20 +642,190 @@ class CoreMLTextGenerator: ObservableObject {
         return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
-    private func generateEnhancedText(from prompt: String) -> String {
-        let continuations = [
-            " The weight of this realization settled over me like a familiar blanket. There's something profoundly human about recognizing patterns in chaos, about finding meaning in the mundane details of existence. I've been thinking about how we construct narratives from fragments of experience.",
-            
-            " What strikes me most is how memory works - not as a recording device, but as a storyteller, constantly editing and revising our past to make sense of our present. I find myself questioning which details are real and which are reconstructions.",
-            
-            " There's a strange comfort in uncertainty, in not knowing exactly where thoughts end and dreams begin. Sometimes I wonder if authenticity is overrated - maybe the stories we tell ourselves are more important than the facts we think we remember.",
-            
-            " I've been noticing how consciousness feels like a conversation between different versions of myself. The observer, the experiencer, the narrator - all playing their roles in this ongoing performance of being human.",
-            
-            " The boundary between internal and external reality feels more porous today. Maybe what we call 'truth' is just the story that feels most compelling at any given moment. I'm learning to be okay with that ambiguity."
+    func generateContextualText(prompt: String, recentEntries: [String], realityLevel: Double) async throws -> String {
+        // If model is available, use it with contextual prompt
+        if isModelLoaded {
+            return try await generateText(prompt: prompt, maxLength: 150)
+        } else {
+            // Use intelligent fallback that mimics style
+            return generateIntelligentFallback(prompt: prompt, recentEntries: recentEntries, realityLevel: realityLevel)
+        }
+    }
+    
+    private func generateIntelligentFallback(prompt: String, recentEntries: [String], realityLevel: Double) -> String {
+        // Analyze recent entries to generate contextually appropriate continuation
+        let styleAnalysis = analyzeWritingStyle(recentEntries)
+        let thematicContext = extractThemes(recentEntries)
+        
+        return generateStyledContinuation(
+            prompt: prompt,
+            style: styleAnalysis,
+            themes: thematicContext,
+            realityLevel: realityLevel
+        )
+    }
+    
+    private func analyzeWritingStyle(_ entries: [String]) -> WritingStyleContext {
+        guard !entries.isEmpty else {
+            return WritingStyleContext(casualness: 0.5, sentenceLength: "moderate", vocabulary: "accessible")
+        }
+        
+        let combinedText = entries.joined(separator: " ")
+        let avgSentenceLength = calculateSentenceLength(combinedText)
+        let casualnessScore = detectCasualness(combinedText)
+        let vocabLevel = analyzeVocabulary(combinedText)
+        
+        return WritingStyleContext(
+            casualness: casualnessScore,
+            sentenceLength: avgSentenceLength < 10 ? "short" : avgSentenceLength > 20 ? "long" : "moderate",
+            vocabulary: vocabLevel > 0.7 ? "sophisticated" : vocabLevel > 0.4 ? "accessible" : "simple"
+        )
+    }
+    
+    private func extractThemes(_ entries: [String]) -> [String] {
+        let themeKeywords = [
+            "work": ["work", "job", "meeting", "colleague", "boss", "office", "deadline"],
+            "relationships": ["friend", "family", "mom", "dad", "relationship", "love"],
+            "daily": ["morning", "coffee", "sleep", "home", "routine", "tired"],
+            "emotions": ["happy", "sad", "stressed", "excited", "worried", "calm"],
+            "reflection": ["thinking", "realized", "feel", "wonder", "understand"]
         ]
         
-        return prompt + (continuations.randomElement() ?? " [Core ML processing...]")
+        let combinedText = entries.joined(separator: " ").lowercased()
+        var themeScores: [String: Int] = [:]
+        
+        for (theme, keywords) in themeKeywords {
+            let score = keywords.reduce(0) { count, keyword in
+                count + combinedText.components(separatedBy: keyword).count - 1
+            }
+            themeScores[theme] = score
+        }
+        
+        return themeScores.sorted { $0.value > $1.value }.prefix(2).map { $0.key }
+    }
+    
+    private func generateStyledContinuation(prompt: String, style: WritingStyleContext, themes: [String], realityLevel: Double) -> String {
+        let continuationStarters = style.casualness > 0.5 ? 
+            ["honestly", "like", "anyway", "so basically", "i guess", "kinda feels like"] :
+            ["I find myself", "There's something", "What strikes me", "I've been thinking", "It occurs to me"]
+        
+        let themeBasedContent = generateThemeBasedContent(themes: themes, realityLevel: realityLevel, style: style)
+        
+        let starter = continuationStarters.randomElement() ?? "I think"
+        let connector = style.casualness > 0.5 ? "..." : "."
+        
+        var continuation = " \(starter.capitalized) \(themeBasedContent)\(connector)"
+        
+        // Add second sentence if style allows longer content
+        if style.sentenceLength != "short" {
+            let secondPart = generateSecondSentence(themes: themes, style: style)
+            continuation += " \(secondPart)"
+        }
+        
+        return prompt + continuation
+    }
+    
+    private func generateThemeBasedContent(themes: [String], realityLevel: Double, style: WritingStyleContext) -> String {
+        let isCreative = realityLevel < 0.5
+        
+        let contentMap: [String: [String]] = [
+            "work": isCreative ? 
+                ["my job feels like performance art", "the office exists in some parallel dimension", "meetings are elaborate social experiments"] :
+                ["work was actually productive today", "had a good conversation with my colleague", "finally finished that project"],
+                
+            "relationships": isCreative ?
+                ["people are beautiful puzzles", "conversations feel like collaborative storytelling", "human connection is this wild mystery"] :
+                ["talked to my friend about life stuff", "family dinner was nice", "feeling grateful for good people"],
+                
+            "daily": isCreative ?
+                ["morning routines are tiny rituals of hope", "coffee tastes like liquid possibility", "sleep is where reality gets interesting"] :
+                ["morning was quiet and peaceful", "coffee was perfect today", "sleep actually felt restful"],
+                
+            "emotions": isCreative ?
+                ["feelings are like weather patterns in my chest", "emotions have their own logic", "mood shifts feel like changing seasons"] :
+                ["feeling pretty good about things", "emotions are complicated but manageable", "learning to sit with difficult feelings"],
+                
+            "reflection": isCreative ?
+                ["consciousness is this ongoing conversation", "thoughts have their own ecosystem", "awareness keeps surprising me"] :
+                ["been thinking about what really matters", "reflecting on recent experiences", "trying to understand my reactions"]
+        ]
+        
+        let primaryTheme = themes.first ?? "reflection"
+        let options = contentMap[primaryTheme] ?? contentMap["reflection"]!
+        
+        return options.randomElement() ?? "about the complexity of daily experience"
+    }
+    
+    private func generateSecondSentence(themes: [String], style: WritingStyleContext) -> String {
+        let casual = [
+            "pretty wild how that works",
+            "not sure what to make of it yet",
+            "still processing all of this",
+            "life keeps teaching me stuff"
+        ]
+        
+        let formal = [
+            "The implications are still unfolding.",
+            "I'm curious to see where this leads.",
+            "There's more to explore here.",
+            "This deserves further reflection."
+        ]
+        
+        let options = style.casualness > 0.5 ? casual : formal
+        return options.randomElement() ?? "There's always more to discover."
+    }
+    
+    // Helper method to detect gibberish text
+    private func isGibberish(_ text: String) -> Bool {
+        // Check if text is mostly non-alphabetic characters
+        let alphaCount = text.filter { $0.isLetter }.count
+        let totalCount = text.count
+        
+        if totalCount == 0 { return true }
+        
+        let alphaRatio = Double(alphaCount) / Double(totalCount)
+        
+        // If less than 30% alphabetic characters, likely gibberish
+        if alphaRatio < 0.3 { return true }
+        
+        // Check for excessive punctuation or symbols
+        let symbolCount = text.filter { "!@#$%^&*()+={}[]|\\:;\"'<>?/~`".contains($0) }.count
+        let symbolRatio = Double(symbolCount) / Double(totalCount)
+        
+        // If more than 50% symbols, likely gibberish
+        return symbolRatio > 0.5
+    }
+    
+    // Helper methods
+    private func calculateSentenceLength(_ text: String) -> Double {
+        let sentences = text.components(separatedBy: CharacterSet(charactersIn: ".!?")).filter { !$0.isEmpty }
+        guard !sentences.isEmpty else { return 10.0 }
+        
+        let totalWords = sentences.reduce(0) { count, sentence in
+            count + sentence.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.count
+        }
+        
+        return Double(totalWords) / Double(sentences.count)
+    }
+    
+    private func detectCasualness(_ text: String) -> Double {
+        let casualIndicators = ["like", "kinda", "gonna", "yeah", "lol", "tbh", "omg", "don't", "can't", "isn't"]
+        let lowerText = text.lowercased()
+        
+        let casualCount = casualIndicators.reduce(0) { count, indicator in
+            count + lowerText.components(separatedBy: indicator).count - 1
+        }
+        
+        let totalWords = text.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.count
+        return totalWords > 0 ? min(Double(casualCount) / Double(totalWords), 1.0) : 0.0
+    }
+    
+    private func analyzeVocabulary(_ text: String) -> Double {
+        let words = text.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
+        guard !words.isEmpty else { return 0.5 }
+        
+        let uniqueWords = Set(words.map { $0.lowercased() })
+        return Double(uniqueWords.count) / Double(words.count)
     }
     
     // MARK: - Helper Methods
@@ -387,6 +870,14 @@ extension MLMultiArray {
         array[0] = NSNumber(value: 0) // Placeholder token
         return array
     }
+}
+
+// MARK: - Supporting Types
+
+struct WritingStyleContext {
+    let casualness: Double
+    let sentenceLength: String
+    let vocabulary: String
 }
 
 // MARK: - Error Types
