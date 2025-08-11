@@ -117,4 +117,4 @@ Temporary Items
 .apdisk
 
 # Claude Code specific
-.claude/
+.claude/Gaslight/gpt2-512.mlmodel
