@@ -26,15 +26,12 @@ enum EntryFilter: String, CaseIterable {
 }
 
 enum CalendarDisplayMode: String, CaseIterable {
-    case day = "Day"
     case month = "Month" 
     case week = "Week"
     case year = "Year"
     
     var systemImage: String {
         switch self {
-        case .day:
-            return "calendar.circle"
         case .month:
             return "calendar"
         case .week:
@@ -46,14 +43,12 @@ enum CalendarDisplayMode: String, CaseIterable {
     
     var shortName: String {
         switch self {
-        case .day:
-            return "D"
         case .month:
-            return "M"
+            return "Month"
         case .week:
-            return "W"
+            return "Week"
         case .year:
-            return "Y"
+            return "Year"
         }
     }
 }
@@ -105,11 +100,6 @@ struct CalendarView: View {
                 // Calendar Display
                 Group {
                     switch displayMode {
-                    case .day:
-                        DayCalendarView(
-                            selectedDate: $selectedDate,
-                            entriesPerDate: entriesPerDate
-                        )
                     case .month:
                         CustomCalendarView(
                             selectedDate: $selectedDate,
@@ -231,220 +221,6 @@ struct CalendarView: View {
     }
 }
 
-struct DayCalendarView: View {
-    @Binding var selectedDate: Date
-    let entriesPerDate: [String: [JournalEntry]]
-    
-    private let calendar = Calendar.current
-    private let hourFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h a"
-        return formatter
-    }()
-    
-    private let dayFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEEE, MMMM d, yyyy"
-        return formatter
-    }()
-    
-    private var dateKey: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: selectedDate)
-    }
-    
-    private var entriesForDay: [JournalEntry] {
-        return entriesPerDate[dateKey] ?? []
-    }
-    
-    private var hourlyEntries: [(hour: Int, entries: [JournalEntry])] {
-        let grouped = Dictionary(grouping: entriesForDay) { entry in
-            calendar.component(.hour, from: entry.createdDate)
-        }
-        
-        return (0...23).map { hour in
-            (hour: hour, entries: grouped[hour] ?? [])
-        }
-    }
-    
-    var body: some View {
-        VStack(spacing: 16) {
-            // Day header with navigation
-            HStack {
-                Button(action: previousDay) {
-                    Image(systemName: "chevron.left")
-                        .font(.title2)
-                        .foregroundColor(.blue)
-                }
-                
-                Spacer()
-                
-                VStack {
-                    Text(dayFormatter.string(from: selectedDate))
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                    
-                    if entriesForDay.isEmpty {
-                        Text("No entries")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    } else {
-                        Text("\(entriesForDay.count) entries")
-                            .font(.caption)
-                            .foregroundColor(.blue)
-                    }
-                }
-                
-                Spacer()
-                
-                Button(action: nextDay) {
-                    Image(systemName: "chevron.right")
-                        .font(.title2)
-                        .foregroundColor(.blue)
-                }
-            }
-            .padding(.horizontal)
-            
-            // Hourly timeline
-            ScrollView {
-                LazyVStack(spacing: 1) {
-                    ForEach(hourlyEntries, id: \.hour) { hourData in
-                        HourRowView(
-                            hour: hourData.hour,
-                            entries: hourData.entries,
-                            selectedDate: selectedDate
-                        )
-                    }
-                }
-            }
-        }
-        .padding(.vertical)
-    }
-    
-    private func previousDay() {
-        withAnimation(.easeInOut(duration: 0.3)) {
-            selectedDate = calendar.date(byAdding: .day, value: -1, to: selectedDate) ?? selectedDate
-        }
-    }
-    
-    private func nextDay() {
-        withAnimation(.easeInOut(duration: 0.3)) {
-            selectedDate = calendar.date(byAdding: .day, value: 1, to: selectedDate) ?? selectedDate
-        }
-    }
-}
-
-struct HourRowView: View {
-    let hour: Int
-    let entries: [JournalEntry]
-    let selectedDate: Date
-    
-    private var hourString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h a"
-        let hourDate = Calendar.current.date(bySettingHour: hour, minute: 0, second: 0, of: selectedDate) ?? selectedDate
-        return formatter.string(from: hourDate)
-    }
-    
-    private var isCurrentHour: Bool {
-        let now = Date()
-        return Calendar.current.isDate(selectedDate, inSameDayAs: now) && 
-               Calendar.current.component(.hour, from: now) == hour
-    }
-    
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            // Hour label
-            VStack {
-                Text(hourString)
-                    .font(.caption)
-                    .fontWeight(isCurrentHour ? .bold : .medium)
-                    .foregroundColor(isCurrentHour ? .blue : .secondary)
-                    .frame(width: 50, alignment: .trailing)
-                
-                if isCurrentHour {
-                    Circle()
-                        .fill(.blue)
-                        .frame(width: 4, height: 4)
-                }
-            }
-            .frame(height: entries.isEmpty ? 30 : nil)
-            
-            // Timeline line
-            Rectangle()
-                .fill(Color.gray.opacity(0.3))
-                .frame(width: 1)
-                .frame(height: entries.isEmpty ? 30 : nil)
-            
-            // Entries for this hour
-            VStack(alignment: .leading, spacing: 8) {
-                if entries.isEmpty {
-                    Spacer()
-                        .frame(height: 30)
-                } else {
-                    ForEach(entries.sorted(by: { $0.createdDate < $1.createdDate })) { entry in
-                        HourEntryView(entry: entry)
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.horizontal)
-    }
-}
-
-struct HourEntryView: View {
-    let entry: JournalEntry
-    
-    private var entryTypeColor: Color {
-        switch entry.entryType {
-        case .userWritten:
-            return .blue
-        case .aiGenerated:
-            return .orange
-        case .aiEnhanced:
-            return Color.orange.opacity(0.7)
-        }
-    }
-    
-    private var timeString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h:mm a"
-        return formatter.string(from: entry.createdDate)
-    }
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(timeString)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                
-                Spacer()
-                
-                Circle()
-                    .fill(entryTypeColor)
-                    .frame(width: 6, height: 6)
-            }
-            
-            Text(entry.content)
-                .font(.caption)
-                .lineLimit(3)
-                .foregroundColor(.primary)
-        }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(entryTypeColor.opacity(0.1))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(entryTypeColor.opacity(0.3), lineWidth: 1)
-        )
-    }
-}
 
 struct WeekCalendarView: View {
     @Binding var selectedDate: Date
@@ -585,9 +361,7 @@ struct WeekDayView: View {
     }
     
     private var backgroundColor: Color {
-        if isSelected {
-            return .blue
-        } else if !entries.isEmpty {
+        if !entries.isEmpty {
             if realCount > 0 && aiCount > 0 {
                 return .clear // Will use split background
             } else if realCount > 0 {
@@ -601,11 +375,7 @@ struct WeekDayView: View {
     }
     
     private var textColor: Color {
-        if isSelected {
-            return .white
-        } else {
-            return .primary
-        }
+        return .primary
     }
     
     var body: some View {
@@ -640,9 +410,16 @@ struct WeekDayView: View {
                 }
                 
                 // Today indicator
-                if isToday && !isSelected {
+                if isToday {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(.blue, lineWidth: 2)
+                        .frame(height: 80)
+                }
+                
+                // Selection indicator
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(.blue, lineWidth: 4)
                         .frame(height: 80)
                 }
                 

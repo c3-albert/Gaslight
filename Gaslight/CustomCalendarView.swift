@@ -164,9 +164,7 @@ struct DateCell: View {
     }
     
     private var backgroundColor: Color {
-        if isSelected {
-            return .blue
-        } else if hasEntries && !shouldShowSplitBackground {
+        if hasEntries && !shouldShowSplitBackground {
             if entryInfo.hasReal {
                 return .blue.opacity(0.3)
             } else {
@@ -178,9 +176,7 @@ struct DateCell: View {
     }
     
     private var textColor: Color {
-        if isSelected {
-            return .white
-        } else if !isCurrentMonth {
+        if !isCurrentMonth {
             return .secondary
         } else {
             return .primary
@@ -212,10 +208,10 @@ struct DateCell: View {
                     .stroke(Color.blue, lineWidth: 2)
             }
             
-            // Selected indicator
+            // Selection ring indicator
             if isSelected {
                 Rectangle()
-                    .fill(.blue)
+                    .stroke(.blue, lineWidth: 3)
             }
             
             VStack(spacing: 2) {
