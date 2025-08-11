@@ -17,10 +17,12 @@ struct WriteForMeView: View {
     @State private var realityLevel: Double = 0.5
     @State private var showSavedMessage = false
     @State private var isGenerating = false
+    @StateObject private var typewriterViewModel = TypewriterViewModel()
     
     var body: some View {
         NavigationView {
-            VStack(alignment: .leading, spacing: 20) {
+            ZStack {
+                VStack(alignment: .leading, spacing: 20) {
                 // Original entry context
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Original entry from:")
@@ -92,24 +94,48 @@ struct WriteForMeView: View {
                         .font(.subheadline)
                         .fontWeight(.medium)
                     
-                    TextEditor(text: $additionalText)
-                        .frame(minHeight: 150)
-                        .padding(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color.gray.opacity(0.4), lineWidth: 1)
-                        )
-                        .overlay(
-                            Group {
-                                if additionalText.isEmpty {
-                                    Text("Generate additional text or write your own...")
-                                        .foregroundColor(.secondary)
-                                        .padding(16)
-                                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                                        .allowsHitTesting(false)
+                    ZStack {
+                        TextEditor(text: $additionalText)
+                            .frame(minHeight: 150)
+                            .padding(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Color.gray.opacity(0.4), lineWidth: 1)
+                            )
+                            .overlay(
+                                Group {
+                                    if additionalText.isEmpty && !isGenerating {
+                                        Text("Generate additional text or write your own...")
+                                            .foregroundColor(.secondary)
+                                            .padding(16)
+                                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                                            .allowsHitTesting(false)
+                                    }
                                 }
+                            )
+                            .disabled(isGenerating)
+                            .opacity(isGenerating ? 0.7 : 1.0)
+                        
+                        // Typewriter overlay when AI is generating
+                        if isGenerating {
+                            VStack {
+                                HStack {
+                                    Text(typewriterViewModel.displayedText)
+                                        .font(.system(.body))
+                                        .padding(12)
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                                    Spacer()
+                                }
+                                Spacer()
                             }
-                        )
+                            .frame(minHeight: 150)
+                            .background(Color(.systemBackground))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Color.orange.opacity(0.6), lineWidth: 2)
+                            )
+                        }
+                    }
                 }
                 
                 if showSavedMessage {
@@ -119,10 +145,19 @@ struct WriteForMeView: View {
                 }
                 
                 Spacer()
+                }
+                .padding()
+                .navigationTitle("Write for Me")
+                .navigationBarTitleDisplayMode(.inline)
+                
+                // Orange AI takeover overlay
+                if isGenerating {
+                    Color.orange.opacity(0.15)
+                        .ignoresSafeArea(.all)
+                        .animation(.easeInOut(duration: 0.5), value: isGenerating)
+                        .allowsHitTesting(false)
+                }
             }
-            .padding()
-            .navigationTitle("Write for Me")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
@@ -142,11 +177,17 @@ struct WriteForMeView: View {
     }
     
     private func generateAdditionalText() {
-        isGenerating = true
-        
         Task {
+            await MainActor.run {
+                isGenerating = true
+                typewriterViewModel.displayedText = ""
+            }
+            
             let generator = AIEntryGenerator.shared
             let continuation = await generator.generateContinuation(for: entry.content, realityLevel: realityLevel)
+            
+            // Start typewriter animation
+            await typewriterViewModel.typeText(continuation, speed: 0.03)
             
             await MainActor.run {
                 additionalText = continuation

@@ -12,7 +12,6 @@ struct NewEntriesListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \JournalEntry.createdDate, order: .reverse) private var entries: [JournalEntry]
     @State private var selectedEntry: JournalEntry?
-    @State private var showingEditSheet = false
     @State private var showingWriteForMeSheet = false
     
     
@@ -125,10 +124,6 @@ struct NewEntriesListView: View {
                                 EntryCardView(
                                     entry: entry, 
                                     isLatest: entry.id == mostRecentEntry?.id,
-                                    onEditEntry: {
-                                        selectedEntry = entry
-                                        showingEditSheet = true
-                                    },
                                     onWriteForMe: {
                                         selectedEntry = entry
                                         showingWriteForMeSheet = true
@@ -165,12 +160,10 @@ struct NewEntriesListView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         if let mostRecentEntry = mostRecentEntry {
                             let entryID = "entry_\(mostRecentEntry.createdDate.timeIntervalSince1970)"
-                            print("Scrolling to latest entry: \(entryID)")
                             withAnimation(.easeInOut(duration: 0.15)) {
                                 proxy.scrollTo(entryID, anchor: .center)
                             }
                         } else {
-                            print("No recent entry found, scrolling to today section")
                             withAnimation(.easeInOut(duration: 0.5)) {
                                 proxy.scrollTo(todaySection, anchor: .top)
                             }
@@ -178,11 +171,17 @@ struct NewEntriesListView: View {
                     }
                 }
             }
-            .navigationTitle("")
-            .navigationBarHidden(true)
-            .sheet(isPresented: $showingEditSheet) {
-                if let entry = selectedEntry {
-                    EditEntryView(entry: entry)
+            .navigationTitle("Gaslight Journaling")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        NotificationCenter.default.post(name: NSNotification.Name("ShowSettings"), object: nil)
+                    }) {
+                        Image(systemName: "gearshape")
+                            .font(.title3)
+                            .foregroundColor(.primary)
+                    }
                 }
             }
             .sheet(isPresented: $showingWriteForMeSheet) {
@@ -230,17 +229,35 @@ struct NewEntriesListView: View {
 struct EntryCardView: View {
     let entry: JournalEntry
     let isLatest: Bool
-    let onEditEntry: () -> Void
     let onWriteForMe: () -> Void
+    
+    private var entryTypeColor: Color {
+        switch entry.entryType {
+        case .userWritten:
+            return .blue
+        case .aiGenerated:
+            return .orange
+        case .aiEnhanced:
+            return Color.orange.opacity(0.7)
+        }
+    }
+    
+    private var borderWidth: CGFloat {
+        return isLatest ? 4 : 3
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Green line for latest entry
-            if isLatest {
-                Rectangle()
-                    .fill(Color.green)
-                    .frame(height: 3)
-            }
+            // Colored line for entry type
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        gradient: Gradient(colors: isLatest ? [entryTypeColor, entryTypeColor.opacity(0.6)] : [entryTypeColor]),
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(height: borderWidth)
             
             VStack(alignment: .leading, spacing: 12) {
             // Header with time and type
@@ -251,17 +268,21 @@ struct EntryCardView: View {
                 
                 Spacer()
                 
-                HStack(spacing: 4) {
-                    Text(entry.entryType.emoji)
-                        .font(.caption)
+                HStack(spacing: 6) {
+                    // Color-coded type indicator
+                    Circle()
+                        .fill(entryTypeColor)
+                        .frame(width: 8, height: 8)
+                    
                     Text(entry.entryType.displayName)
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(entryTypeColor)
+                        .fontWeight(.medium)
                     
                     if entry.isAIGenerated {
                         Text("(\(entry.realityPercentage))")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(entryTypeColor.opacity(0.8))
                     }
                 }
             }
@@ -288,20 +309,6 @@ struct EntryCardView: View {
                 
                 // Action buttons
                 HStack(spacing: 12) {
-                    Button(action: onEditEntry) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "pencil")
-                                .font(.caption)
-                            Text("Edit My Entry")
-                                .font(.caption)
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.blue.opacity(0.1))
-                        .foregroundColor(.blue)
-                        .cornerRadius(8)
-                    }
-                    
                     Button(action: onWriteForMe) {
                         HStack(spacing: 4) {
                             Image(systemName: "text.badge.plus")
@@ -329,7 +336,7 @@ struct EntryCardView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.gray.opacity(0.7), lineWidth: 1.5)
+                .stroke(entryTypeColor.opacity(0.3), lineWidth: isLatest ? 2 : 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal, 4)

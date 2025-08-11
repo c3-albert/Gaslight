@@ -12,6 +12,17 @@ enum EntryFilter: String, CaseIterable {
     case all = "All"
     case real = "Real Only"
     case ai = "AI Only"
+    
+    var themeColor: Color {
+        switch self {
+        case .all:
+            return .primary
+        case .real:
+            return .blue
+        case .ai:
+            return .orange
+        }
+    }
 }
 
 struct CalendarView: View {
@@ -78,7 +89,7 @@ struct CalendarView: View {
                         if !entriesForSelectedDate.isEmpty {
                             Text("\(entriesForSelectedDate.count) entries")
                                 .font(.caption)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(entryFilter.themeColor.opacity(0.8))
                         }
                     }
                     .padding(.horizontal)
@@ -144,15 +155,20 @@ struct EntryRowView: View {
                 .lineLimit(3)
             
             HStack {
-                Label(entry.entryType.displayName, systemImage: entry.entryType == .userWritten ? "person" : "robot")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(entry.entryType == .userWritten ? Color.blue : Color.orange)
+                        .frame(width: 6, height: 6)
+                    Text(entry.entryType.displayName)
+                        .font(.caption)
+                        .foregroundColor(entry.entryType == .userWritten ? .blue : .orange)
+                }
                 
                 if entry.isAIGenerated {
                     Spacer()
                     Text("Reality: \(entry.realityPercentage)")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.orange.opacity(0.8))
                 }
             }
         }

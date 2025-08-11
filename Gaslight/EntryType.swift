@@ -33,4 +33,15 @@ enum EntryType: String, CaseIterable, Codable {
             return "✨"
         }
     }
+    
+    var themeColor: String {
+        switch self {
+        case .userWritten:
+            return "blue"
+        case .aiGenerated:
+            return "orange"
+        case .aiEnhanced:
+            return "orange"
+        }
+    }
 }

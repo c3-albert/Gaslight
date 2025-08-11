@@ -79,7 +79,7 @@ struct CustomCalendarView: View {
             
             // Weekday headers
             HStack {
-                ForEach(["S", "M", "T", "W", "T", "F", "S"], id: \.self) { weekday in
+                ForEach(Array(zip(0..., ["S", "M", "T", "W", "T", "F", "S"])), id: \.0) { index, weekday in
                     Text(weekday)
                         .font(.caption)
                         .fontWeight(.medium)
@@ -173,12 +173,12 @@ struct DateCell: View {
             switch entryFilter {
             case .all:
                 if entryInfo.hasReal {
-                    return .green.opacity(0.3)
+                    return .blue.opacity(0.3)
                 } else {
                     return .orange.opacity(0.3)
                 }
             case .real:
-                return entryInfo.hasReal ? .green.opacity(0.3) : .clear
+                return entryInfo.hasReal ? .blue.opacity(0.3) : .clear
             case .ai:
                 return entryInfo.hasAI ? .orange.opacity(0.3) : .clear
             }
@@ -212,7 +212,7 @@ struct DateCell: View {
                     
                     // Real triangle (top left)
                     TriangleShape(pointPosition: .topLeft)
-                        .fill(.green.opacity(0.3))
+                        .fill(.blue.opacity(0.3))
                 }
             }
             

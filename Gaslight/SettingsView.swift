@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 class GaslightSettings: ObservableObject {
     @Published var realityLevel: Double = 1.0
@@ -58,6 +59,9 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @StateObject private var aiGenerator = AIEntryGenerator.shared
     @StateObject private var coreMLGenerator = CoreMLTextGenerator.shared
+    @State private var showingFileImporter = false
+    @State private var testPrompts: [String] = []
+    @State private var isTestingCustomPrompts = false
     
     var body: some View {
         NavigationView {
@@ -111,47 +115,31 @@ struct SettingsView: View {
                 
                 Section {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("AI Generation Mode")
+                        Text("On-Device AI")
                             .font(.subheadline)
                         
-                        Picker("AI Mode", selection: $aiGenerator.generationMode) {
-                            Text("Templates Only").tag(AIGenerationMode.templates)
-                            Text("Core ML Only").tag(AIGenerationMode.coreML)
-                            Text("Hybrid Mode").tag(AIGenerationMode.hybrid)
-                        }
-                        .pickerStyle(SegmentedPickerStyle())
-                        
-                        if aiGenerator.generationMode == .coreML || aiGenerator.generationMode == .hybrid {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Core ML Model Status")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                
-                                Text(coreMLGenerator.modelStatus)
-                                    .font(.caption)
-                                    .foregroundColor(coreMLGenerator.isModelLoaded ? .green : .orange)
-                                
-                                if !coreMLGenerator.isModelLoaded && !coreMLGenerator.isLoading {
-                                    Button("Load GPT-2 Model") {
-                                        Task {
-                                            try? await coreMLGenerator.loadModel()
-                                        }
-                                    }
-                                    .font(.caption)
-                                    .foregroundColor(.blue)
-                                }
-                                
-                                if coreMLGenerator.isLoading {
-                                    ProgressView(value: coreMLGenerator.loadingProgress)
-                                        .progressViewStyle(LinearProgressViewStyle())
-                                }
-                            }
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Device Capability")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            Text(DeviceCapabilityDetector.shared.aiCapabilityTier.description + " Tier")
+                                .font(.caption)
+                                .foregroundColor(.green)
+                            
+                            Text("AI Backend: \(OnDeviceAIGenerator.shared.currentBackend.description)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            Text(OnDeviceAIGenerator.shared.modelStatus)
+                                .font(.caption)
+                                .foregroundColor(OnDeviceAIGenerator.shared.isModelLoaded ? .green : .orange)
                         }
                     }
                 } header: {
                     Text("AI Engine")
                 } footer: {
-                    Text("Templates: Fast, creative responses. Core ML: On-device AI for more natural text. Hybrid: Best of both modes.")
+                    Text("Your device automatically uses the best available AI for journal generation. Premium devices get sophisticated on-device AI, while all devices get enhanced templates with perfect text quality.")
                 }
                 
                 Section {
@@ -164,13 +152,44 @@ struct SettingsView: View {
                         generateBulkEntries()
                     }
                     .foregroundColor(.orange)
+                    
+                    Button("Import Custom Test Prompts") {
+                        showingFileImporter = true
+                    }
+                    .foregroundColor(.green)
+                    
+                    if !testPrompts.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Loaded \(testPrompts.count) custom prompts")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            Button("Test All AI Modes with Custom Prompts") {
+                                testCustomPromptsWithAllModes()
+                            }
+                            .foregroundColor(.purple)
+                            .disabled(isTestingCustomPrompts)
+                            
+                            if isTestingCustomPrompts {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            }
+                        }
+                    }
                 } header: {
                     Text("Testing")
                 } footer: {
-                    Text("Generate sample entries to test the app. The bulk generation creates entries across the past 30 days with mixed real and AI content.")
+                    Text("Generate sample entries or import a text file with your own prompts (one per line) to test across all AI modes.")
                 }
             }
             .navigationTitle("Settings")
+            .fileImporter(
+                isPresented: $showingFileImporter,
+                allowedContentTypes: [.plainText],
+                allowsMultipleSelection: false
+            ) { result in
+                handleFileImport(result)
+            }
         }
     }
     
@@ -267,28 +286,107 @@ struct SettingsView: View {
     
     private func generateRealisticUserContent(for date: Date) -> String {
         let userContents = [
-            "Had a great day at work today. Finally finished that project I've been working on.",
-            "Went for a long walk in the park. The weather was perfect.",
-            "Met up with friends for dinner. We tried that new restaurant downtown.",
-            "Feeling a bit tired today. Maybe I should go to bed earlier.",
-            "Watched a really interesting documentary about ocean life.",
-            "Cooked a new recipe for lunch. It turned out better than expected!",
-            "Had trouble sleeping last night. Too much on my mind.",
-            "Cleaned the entire house today. It feels so much better now.",
-            "Started reading a new book. Already hooked after the first chapter.",
-            "Went grocery shopping and tried to stick to healthy options.",
-            "Had a video call with family. It's been too long since we talked.",
-            "Took some photos of the sunset. The colors were incredible.",
-            "Feeling grateful for all the good things in my life right now.",
-            "Had a lazy Sunday morning with coffee and the newspaper.",
-            "Tried meditation for the first time. It was harder than I thought.",
-            "Organized my desk and found things I thought I'd lost.",
-            "Made plans for the weekend. Looking forward to some downtime.",
-            "Had an interesting conversation with a stranger on the bus.",
-            "Practiced guitar for an hour. My fingers are getting stronger.",
-            "Discovered a new podcast that I'm really enjoying."
+            "work was actually ok today. got stuff done for once",
+            "couldn't sleep last night... phone died so just laid there thinking",
+            "grabbed coffee with sarah. she's dealing with the same stuff at her job lol",
+            "tried to meal prep but ended up ordering pizza instead. classic me",
+            "mom called asking about my life. told her im fine which is mostly true",
+            "commute took forever. some accident on the highway, everyone just sitting there",
+            "finally cleaned my room. found like 3 phone chargers i thought i lost",
+            "watched netflix till 2am even though i have work tomorrow. no regrets",
+            "went grocery shopping without a list. bought everything except what i actually need",
+            "that meeting couldve been an email. spent an hour discussing nothing",
+            "weather was perfect so i walked instead of taking the bus. small wins",
+            "tried cooking something fancy. smoke alarm went off but it was edible",
+            "spent way too much time scrolling social media. everyone looks so happy",
+            "laundry has been in the basket for 3 days. wearing my backup underwear",
+            "called my dentist to reschedule again. 6 months later still avoiding it",
+            "discovered a new podcast. binged 4 episodes while doing dishes",
+            "friend canceled plans last minute. honestly kinda relieved",
+            "bought plants at the store. hopefully these ones dont die immediately",
+            "traffic was terrible but this song came on that made it bearable",
+            "realized i forgot to eat lunch until 4pm. grabbed a granola bar and called it good",
+            "coworker was being weird today. not sure if its me or them",
+            "tried to organize my photos. gave up after 20 minutes. too many screenshots"
         ]
         
-        return userContents.randomElement() ?? "Today was an ordinary day, but that's okay too."
+        return userContents.randomElement() ?? "today was fine i guess. things happened"
+    }
+    
+    private func handleFileImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            
+            do {
+                let content = try String(contentsOf: url, encoding: .utf8)
+                let prompts = content.components(separatedBy: .newlines)
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                
+                testPrompts = prompts
+                print("Loaded \(prompts.count) custom prompts")
+            } catch {
+                print("Failed to read file: \(error)")
+            }
+            
+        case .failure(let error):
+            print("File import failed: \(error)")
+        }
+    }
+    
+    private func testCustomPromptsWithAllModes() {
+        guard !testPrompts.isEmpty else { return }
+        
+        isTestingCustomPrompts = true
+        
+        Task {
+            let modes: [(AIGenerationMode, String)] = [
+                (.templates, "Templates"),
+                (.coreML, "Core ML"),
+                (.hybrid, "Hybrid")
+            ]
+            
+            let realityLevels = [0.1, 0.5, 0.9]
+            let originalMode = aiGenerator.generationMode
+            
+            for prompt in testPrompts {
+                for (mode, _) in modes {
+                    aiGenerator.generationMode = mode
+                    
+                    for realityLevel in realityLevels {
+                        let content = await aiGenerator.enhanceUserEntry(prompt, realityLevel: realityLevel)
+                        
+                        let testEntry = JournalEntry(
+                            content: content,
+                            entryType: .aiEnhanced,
+                            realityLevel: realityLevel,
+                            originalContent: prompt
+                        )
+                        
+                        await MainActor.run {
+                            modelContext.insert(testEntry)
+                        }
+                        
+                        // Small delay to prevent overwhelming the system
+                        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                    }
+                }
+            }
+            
+            // Restore original mode
+            aiGenerator.generationMode = originalMode
+            
+            await MainActor.run {
+                do {
+                    try modelContext.save()
+                    print("Generated entries for all custom prompts across all AI modes")
+                } catch {
+                    print("Failed to save custom prompt entries: \(error)")
+                }
+                
+                isTestingCustomPrompts = false
+            }
+        }
     }
 }
