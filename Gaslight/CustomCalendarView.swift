@@ -11,7 +11,6 @@ import Foundation
 struct CustomCalendarView: View {
     @Binding var selectedDate: Date
     let datesWithEntries: Set<String>
-    let entryFilter: EntryFilter
     let entriesPerDate: [String: [JournalEntry]]
     
     @State private var currentMonth = Date()
@@ -98,8 +97,7 @@ struct CustomCalendarView: View {
                         isCurrentMonth: calendar.isDate(date, equalTo: currentMonth, toGranularity: .month),
                         isToday: calendar.isDateInToday(date),
                         hasEntries: datesWithEntries.contains(dateString(from: date)),
-                        entryInfo: getEntryInfo(for: date),
-                        entryFilter: entryFilter
+                        entryInfo: getEntryInfo(for: date)
                     )
                     .onTapGesture {
                         selectedDate = date
@@ -154,7 +152,6 @@ struct DateCell: View {
     let isToday: Bool
     let hasEntries: Bool
     let entryInfo: EntryInfo
-    let entryFilter: EntryFilter
     
     private var dayNumber: String {
         let formatter = DateFormatter()
@@ -163,24 +160,17 @@ struct DateCell: View {
     }
     
     private var shouldShowSplitBackground: Bool {
-        return entryFilter == .all && entryInfo.hasReal && entryInfo.hasAI
+        return entryInfo.hasReal && entryInfo.hasAI
     }
     
     private var backgroundColor: Color {
         if isSelected {
             return .blue
         } else if hasEntries && !shouldShowSplitBackground {
-            switch entryFilter {
-            case .all:
-                if entryInfo.hasReal {
-                    return .blue.opacity(0.3)
-                } else {
-                    return .orange.opacity(0.3)
-                }
-            case .real:
-                return entryInfo.hasReal ? .blue.opacity(0.3) : .clear
-            case .ai:
-                return entryInfo.hasAI ? .orange.opacity(0.3) : .clear
+            if entryInfo.hasReal {
+                return .blue.opacity(0.3)
+            } else {
+                return .orange.opacity(0.3)
             }
         } else {
             return .clear

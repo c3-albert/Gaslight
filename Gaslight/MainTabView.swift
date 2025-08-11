@@ -13,7 +13,7 @@ struct MainTabView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var entries: [JournalEntry]
     @State private var selectedTab = 0
-    @State private var showingSettings = false
+    // Settings now handled as a dedicated tab
     
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -24,17 +24,17 @@ struct MainTabView: View {
                 }
                 .tag(0)
             
-            ContentView()
+            NewEntriesListView()
                 .tabItem {
-                    Image(systemName: selectedTab == 1 ? "plus.circle.fill" : "plus.circle")
-                    Text("New Entry")
+                    Image(systemName: selectedTab == 1 ? "book.fill" : "book")
+                    Text("History")
                 }
                 .tag(1)
             
-            NewEntriesListView()
+            ContentView()
                 .tabItem {
-                    Image(systemName: selectedTab == 2 ? "book.fill" : "book")
-                    Text("Journal")
+                    Image(systemName: selectedTab == 2 ? "plus.circle.fill" : "plus.circle")
+                    Text("New Entry")
                 }
                 .tag(2)
             
@@ -44,6 +44,16 @@ struct MainTabView: View {
                     Text("Calendar")
                 }
                 .tag(3)
+            
+            NavigationView {
+                SettingsView()
+                    .environmentObject(settings)
+            }
+                .tabItem {
+                    Image(systemName: selectedTab == 4 ? "gearshape.fill" : "gearshape")
+                    Text("Settings")
+                }
+                .tag(4)
         }
         .preferredColorScheme(settings.colorScheme)
         .onChange(of: selectedTab) { _, newValue in
@@ -51,22 +61,8 @@ struct MainTabView: View {
             let impact = UIImpactFeedbackGenerator(style: .light)
             impact.impactOccurred()
         }
-        .sheet(isPresented: $showingSettings) {
-            NavigationView {
-                SettingsView()
-                    .environmentObject(settings)
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Button("Done") {
-                                showingSettings = false
-                            }
-                            .fontWeight(.semibold)
-                        }
-                    }
-            }
-        }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowSettings"))) { _ in
-            showingSettings = true
+            selectedTab = 4 // Navigate to Settings tab instead of showing sheet
         }
     }
     

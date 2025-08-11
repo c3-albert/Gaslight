@@ -13,11 +13,21 @@ struct NewEntriesListView: View {
     @Query(sort: \JournalEntry.createdDate, order: .reverse) private var entries: [JournalEntry]
     @State private var selectedEntry: JournalEntry?
     @State private var showingWriteForMeSheet = false
+    @State private var searchText = ""
     
+    private var filteredEntries: [JournalEntry] {
+        if searchText.isEmpty {
+            return entries
+        } else {
+            return entries.filter { entry in
+                entry.content.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+    }
     
     private var groupedEntries: [(String, [JournalEntry])] {
         let calendar = Calendar.current
-        let grouped = Dictionary(grouping: entries) { entry in
+        let grouped = Dictionary(grouping: filteredEntries) { entry in
             let dateComponents = calendar.dateComponents([.year, .month, .day], from: entry.createdDate)
             let date = calendar.date(from: dateComponents) ?? entry.createdDate
             return date
@@ -34,7 +44,7 @@ struct NewEntriesListView: View {
     }
     
     private var mostRecentEntry: JournalEntry? {
-        return entries.sorted { $0.createdDate > $1.createdDate }.first
+        return filteredEntries.sorted { $0.createdDate > $1.createdDate }.first
     }
     
     private var topSpacerView: some View {
@@ -95,13 +105,13 @@ struct NewEntriesListView: View {
     
     private var emptyStateView: some View {
         VStack(spacing: 16) {
-            Image(systemName: "book.closed")
+            Image(systemName: searchText.isEmpty ? "book.closed" : "magnifyingglass")
                 .font(.largeTitle)
                 .foregroundColor(.gray)
-            Text("No entries yet")
+            Text(searchText.isEmpty ? "No entries yet" : "No results found")
                 .font(.headline)
                 .foregroundColor(.secondary)
-            Text("Start writing to see your entries here")
+            Text(searchText.isEmpty ? "Start writing to see your entries here" : "Try adjusting your search terms")
                 .font(.body)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -114,76 +124,132 @@ struct NewEntriesListView: View {
     
     var body: some View {
         NavigationView {
-            ScrollViewReader { proxy in
-                List {
-                    topSpacerView
+            VStack(spacing: 0) {
+                // Search bar anchored at top
+                HStack {
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.secondary)
+                        TextField("Search entries...", text: $searchText)
+                            .textFieldStyle(PlainTextFieldStyle())
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(10)
                     
-                    ForEach(groupedEntries, id: \.0) { dateString, dayEntries in
-                        Section {
-                            ForEach(dayEntries) { entry in
-                                EntryCardView(
-                                    entry: entry, 
-                                    isLatest: entry.id == mostRecentEntry?.id,
-                                    onWriteForMe: {
-                                        selectedEntry = entry
-                                        showingWriteForMeSheet = true
-                                    }
-                                )
-                                .listRowSeparator(.hidden)
-                                .listRowBackground(Color.clear)
-                                .id("entry_\(entry.createdDate.timeIntervalSince1970)")
-                            }
-                        } header: {
-                            HStack {
-                                Text(formatSectionDate(dateString))
-                                    .font(.headline)
-                                    .fontWeight(.semibold)
-                                Spacer()
-                                Text("\(dayEntries.count) entries")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(.vertical, 4)
+                    if !searchText.isEmpty {
+                        Button("Cancel") {
+                            searchText = ""
+                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                         }
-                        .id(dateString)
+                        .foregroundColor(.blue)
+                        .transition(.opacity)
                     }
-                    
-                    if entries.isEmpty {
-                        emptyStateView
-                    }
-                    
-                    bottomSpacerView
                 }
-                .listStyle(PlainListStyle())
-                .onAppear {
-                    // Always scroll to most recent entry and center it
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        if let mostRecentEntry = mostRecentEntry {
-                            let entryID = "entry_\(mostRecentEntry.createdDate.timeIntervalSince1970)"
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                proxy.scrollTo(entryID, anchor: .center)
+                .padding(.horizontal)
+                .padding(.top, 8)
+                .background(Color(.systemBackground))
+                
+                // Main content with scroll reader
+                ScrollViewReader { proxy in
+                    List {
+                        if !searchText.isEmpty {
+                            // Show search results without spacers
+                            ForEach(groupedEntries, id: \.0) { dateString, dayEntries in
+                                Section {
+                                    ForEach(dayEntries) { entry in
+                                        EntryCardView(
+                                            entry: entry, 
+                                            isLatest: entry.id == mostRecentEntry?.id,
+                                            onWriteForMe: {
+                                                selectedEntry = entry
+                                                showingWriteForMeSheet = true
+                                            },
+                                            searchText: searchText
+                                        )
+                                        .listRowSeparator(.hidden)
+                                        .listRowBackground(Color.clear)
+                                        .id("entry_\(entry.createdDate.timeIntervalSince1970)")
+                                    }
+                                } header: {
+                                    HStack {
+                                        Text(formatSectionDate(dateString))
+                                            .font(.headline)
+                                            .fontWeight(.semibold)
+                                        Spacer()
+                                        Text("\(dayEntries.count) entries")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding(.vertical, 4)
+                                }
+                                .id(dateString)
                             }
                         } else {
-                            withAnimation(.easeInOut(duration: 0.5)) {
-                                proxy.scrollTo(todaySection, anchor: .top)
+                            // Show normal view with spacers when not searching
+                            topSpacerView
+                            
+                            ForEach(groupedEntries, id: \.0) { dateString, dayEntries in
+                                Section {
+                                    ForEach(dayEntries) { entry in
+                                        EntryCardView(
+                                            entry: entry, 
+                                            isLatest: entry.id == mostRecentEntry?.id,
+                                            onWriteForMe: {
+                                                selectedEntry = entry
+                                                showingWriteForMeSheet = true
+                                            },
+                                            searchText: ""
+                                        )
+                                        .listRowSeparator(.hidden)
+                                        .listRowBackground(Color.clear)
+                                        .id("entry_\(entry.createdDate.timeIntervalSince1970)")
+                                    }
+                                } header: {
+                                    HStack {
+                                        Text(formatSectionDate(dateString))
+                                            .font(.headline)
+                                            .fontWeight(.semibold)
+                                        Spacer()
+                                        Text("\(dayEntries.count) entries")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding(.vertical, 4)
+                                }
+                                .id(dateString)
+                            }
+                            
+                            if entries.isEmpty {
+                                emptyStateView
+                            }
+                            
+                            bottomSpacerView
+                        }
+                    }
+                    .listStyle(PlainListStyle())
+                    .onAppear {
+                        // Only scroll to recent entry when not searching
+                        if searchText.isEmpty {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                if let mostRecentEntry = mostRecentEntry {
+                                    let entryID = "entry_\(mostRecentEntry.createdDate.timeIntervalSince1970)"
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        proxy.scrollTo(entryID, anchor: .center)
+                                    }
+                                } else {
+                                    withAnimation(.easeInOut(duration: 0.5)) {
+                                        proxy.scrollTo(todaySection, anchor: .top)
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
-            .navigationTitle("Gaslight Journaling")
+            .navigationTitle("Entry History")
             .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        NotificationCenter.default.post(name: NSNotification.Name("ShowSettings"), object: nil)
-                    }) {
-                        Image(systemName: "gearshape")
-                            .font(.title3)
-                            .foregroundColor(.primary)
-                    }
-                }
-            }
             .sheet(isPresented: $showingWriteForMeSheet) {
                 if let entry = selectedEntry {
                     WriteForMeView(entry: entry)
@@ -230,6 +296,7 @@ struct EntryCardView: View {
     let entry: JournalEntry
     let isLatest: Bool
     let onWriteForMe: () -> Void
+    let searchText: String
     
     private var entryTypeColor: Color {
         switch entry.entryType {
@@ -287,11 +354,15 @@ struct EntryCardView: View {
                 }
             }
             
-            // Entry content
-            Text(entry.content)
-                .font(.body)
-                .lineLimit(nil)
-                .fixedSize(horizontal: false, vertical: true)
+            // Entry content with search highlighting
+            HighlightedText(
+                text: entry.content,
+                searchText: searchText,
+                font: .body,
+                baseColor: .primary
+            )
+            .lineLimit(nil)
+            .fixedSize(horizontal: false, vertical: true)
             
             // Footer with edit indicator and action buttons
             VStack(alignment: .leading, spacing: 8) {
