@@ -298,6 +298,11 @@ struct EntryCardView: View {
     let onWriteForMe: () -> Void
     let searchText: String
     
+    @State private var isExpanded = false
+    
+    private let maxPreviewLength = 400
+    private let maxPreviewLines = 8
+    
     private var entryTypeColor: Color {
         switch entry.entryType {
         case .userWritten:
@@ -311,6 +316,33 @@ struct EntryCardView: View {
     
     private var borderWidth: CGFloat {
         return isLatest ? 4 : 3
+    }
+    
+    private var shouldTruncate: Bool {
+        entry.content.count > maxPreviewLength
+    }
+    
+    private var displayContent: String {
+        if isExpanded || !shouldTruncate {
+            return entry.content
+        } else {
+            return smartTruncate(entry.content, maxLength: maxPreviewLength)
+        }
+    }
+    
+    private func smartTruncate(_ text: String, maxLength: Int) -> String {
+        guard text.count > maxLength else { return text }
+        
+        let truncated = String(text.prefix(maxLength))
+        
+        // Find the last space to avoid cutting words in half
+        if let lastSpaceIndex = truncated.lastIndex(of: " ") {
+            let smartTruncated = String(truncated[..<lastSpaceIndex])
+            return smartTruncated.trimmingCharacters(in: .whitespacesAndNewlines) + "..."
+        } else {
+            // If no space found, use character-based truncation
+            return truncated.trimmingCharacters(in: .whitespacesAndNewlines) + "..."
+        }
     }
     
     var body: some View {
@@ -355,14 +387,40 @@ struct EntryCardView: View {
             }
             
             // Entry content with search highlighting
-            HighlightedText(
-                text: entry.content,
-                searchText: searchText,
-                font: .body,
-                baseColor: .primary
-            )
-            .lineLimit(nil)
-            .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 10) {
+                HighlightedText(
+                    text: displayContent,
+                    searchText: searchText,
+                    font: .body,
+                    baseColor: .primary
+                )
+                .lineLimit(isExpanded ? nil : maxPreviewLines)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+                
+                // Show more/less button for long entries
+                if shouldTruncate {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            isExpanded.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(isExpanded ? "Show less" : "Show more")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                                .font(.caption2)
+                        }
+                        .foregroundColor(.blue)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
             
             // Footer with edit indicator and action buttons
             VStack(alignment: .leading, spacing: 8) {

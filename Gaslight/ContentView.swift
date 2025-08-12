@@ -18,6 +18,7 @@ struct ContentView: View {
     @State private var selectedDate: Date = Date()
     @State private var showDatePicker: Bool = false
     @StateObject private var typewriterViewModel = TypewriterViewModel()
+    @StateObject private var groqGenerator = GroqAIGenerator.shared
     @State private var isGeneratingAI: Bool = false
 
     private var isWritingForDifferentDate: Bool {
@@ -319,19 +320,36 @@ struct ContentView: View {
                 typewriterViewModel.displayedText = journalText
             }
             
-            let generator = AIEntryGenerator.shared
-            let additionalText = await generator.generateContinuation(for: userOriginalText, realityLevel: realityLevel)
-            
-            // Prepare the full text for typewriter
-            let fullText = journalText.isEmpty ? additionalText : journalText + "\n\n" + additionalText
-            
-            // Start typewriter animation from current text
-            await typewriterViewModel.typeText(fullText, speed: 0.03)
-            
-            await MainActor.run {
-                journalText = fullText
-                originalText = fullText
-                isGeneratingAI = false
+            do {
+                // Create a prompt for continuation based on existing text
+                let prompt = userOriginalText.isEmpty ? 
+                    "Write a journal entry about your day, thoughts, or experiences." :
+                    "Continue this journal entry: \(userOriginalText)"
+                
+                let additionalText = try await groqGenerator.generateJournalEntry(
+                    prompt: prompt,
+                    recentEntries: [],
+                    realityLevel: realityLevel,
+                    theme: nil
+                )
+                
+                // Prepare the full text for typewriter
+                let fullText = journalText.isEmpty ? additionalText : journalText + "\n\n" + additionalText
+                
+                // Start typewriter animation from current text
+                await typewriterViewModel.typeText(fullText, speed: 0.03)
+                
+                await MainActor.run {
+                    journalText = fullText
+                    originalText = fullText
+                    isGeneratingAI = false
+                }
+            } catch {
+                await MainActor.run {
+                    isGeneratingAI = false
+                    // You might want to show an error message to the user here
+                    print("❌ AI generation failed: \(error)")
+                }
             }
         }
     }

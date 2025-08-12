@@ -76,6 +76,48 @@ struct CustomCalendarView: View {
             }
             .padding(.horizontal)
             
+            // Legend between header and calendar
+            HStack(spacing: 20) {
+                HStack(spacing: 6) {
+                    Rectangle()
+                        .fill(.blue.opacity(0.3))
+                        .frame(width: 12, height: 12)
+                    Text("Real Entries")
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                }
+                
+                HStack(spacing: 6) {
+                    Rectangle()
+                        .fill(.orange.opacity(0.3))
+                        .frame(width: 12, height: 12)
+                    Text("AI Entries")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
+                
+                HStack(spacing: 6) {
+                    Rectangle()
+                        .fill(.orange.opacity(0.3))
+                        .frame(width: 12, height: 12)
+                        .overlay(
+                            Path { path in
+                                path.move(to: CGPoint(x: 0, y: 0))
+                                path.addLine(to: CGPoint(x: 12, y: 0))
+                                path.addLine(to: CGPoint(x: 0, y: 12))
+                                path.closeSubpath()
+                            }
+                            .fill(.blue.opacity(0.3))
+                        )
+                    Text("Mixed")
+                        .font(.caption)
+                        .foregroundColor(.primary)
+                }
+                
+                Spacer()
+            }
+            .padding(.horizontal)
+            
             // Weekday headers
             HStack {
                 ForEach(Array(zip(0..., ["S", "M", "T", "W", "T", "F", "S"])), id: \.0) { index, weekday in

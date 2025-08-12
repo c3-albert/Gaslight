@@ -27,15 +27,12 @@ enum EntryFilter: String, CaseIterable {
 
 enum CalendarDisplayMode: String, CaseIterable {
     case month = "Month" 
-    case week = "Week"
     case year = "Year"
     
     var systemImage: String {
         switch self {
         case .month:
             return "calendar"
-        case .week:
-            return "calendar.badge.exclamationmark"
         case .year:
             return "calendar.badge.clock"
         }
@@ -45,8 +42,6 @@ enum CalendarDisplayMode: String, CaseIterable {
         switch self {
         case .month:
             return "Month"
-        case .week:
-            return "Week"
         case .year:
             return "Year"
         }
@@ -97,17 +92,11 @@ struct CalendarView: View {
                 }
                 .padding()
                 
-                // Calendar Display
+                // Calendar Display with wider margins
                 Group {
                     switch displayMode {
                     case .month:
                         CustomCalendarView(
-                            selectedDate: $selectedDate,
-                            datesWithEntries: datesWithEntries,
-                            entriesPerDate: entriesPerDate
-                        )
-                    case .week:
-                        WeekCalendarView(
                             selectedDate: $selectedDate,
                             datesWithEntries: datesWithEntries,
                             entriesPerDate: entriesPerDate
@@ -120,50 +109,7 @@ struct CalendarView: View {
                         )
                     }
                 }
-                
-                // Legend
-                HStack(spacing: 20) {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(.blue.opacity(0.3))
-                            .frame(width: 12, height: 12)
-                        Text("Real Entries")
-                            .font(.caption)
-                            .foregroundColor(.blue)
-                    }
-                    
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(.orange.opacity(0.3))
-                            .frame(width: 12, height: 12)
-                        Text("AI Entries")
-                            .font(.caption)
-                            .foregroundColor(.orange)
-                    }
-                    
-                    HStack(spacing: 6) {
-                        ZStack {
-                            Rectangle()
-                                .fill(.orange.opacity(0.3))
-                                .frame(width: 12, height: 12)
-                            Path { path in
-                                path.move(to: CGPoint(x: 0, y: 0))
-                                path.addLine(to: CGPoint(x: 12, y: 0))
-                                path.addLine(to: CGPoint(x: 0, y: 12))
-                                path.closeSubpath()
-                            }
-                            .fill(.blue.opacity(0.3))
-                            .frame(width: 12, height: 12)
-                        }
-                        Text("Mixed")
-                            .font(.caption)
-                            .foregroundColor(.primary)
-                    }
-                    
-                    Spacer()
-                }
-                .padding(.horizontal)
-                .padding(.bottom, 8)
+                .padding(.horizontal, 32) // Even wider side margins
                 
                 Divider()
                 
@@ -222,241 +168,6 @@ struct CalendarView: View {
 }
 
 
-struct WeekCalendarView: View {
-    @Binding var selectedDate: Date
-    let datesWithEntries: Set<String>
-    let entriesPerDate: [String: [JournalEntry]]
-    
-    private let calendar = Calendar.current
-    
-    private var weekDays: [Date] {
-        guard let weekInterval = calendar.dateInterval(of: .weekOfYear, for: selectedDate) else {
-            return []
-        }
-        
-        var days: [Date] = []
-        var currentDate = weekInterval.start
-        
-        while currentDate < weekInterval.end {
-            days.append(currentDate)
-            currentDate = calendar.date(byAdding: .day, value: 1, to: currentDate) ?? currentDate
-        }
-        
-        return days
-    }
-    
-    private var weekRangeText: String {
-        guard let first = weekDays.first, let last = weekDays.last else {
-            return ""
-        }
-        
-        let firstFormatter = DateFormatter()
-        firstFormatter.dateFormat = "MMMM d"
-        
-        let lastFormatter = DateFormatter()
-        if calendar.isDate(first, equalTo: last, toGranularity: .month) {
-            lastFormatter.dateFormat = "d, yyyy"
-        } else {
-            lastFormatter.dateFormat = "MMMM d, yyyy"
-        }
-        
-        return "\(firstFormatter.string(from: first)) - \(lastFormatter.string(from: last))"
-    }
-    
-    var body: some View {
-        VStack(spacing: 16) {
-            // Week header with navigation
-            HStack {
-                Button(action: previousWeek) {
-                    Image(systemName: "chevron.left")
-                        .font(.title2)
-                        .foregroundColor(.blue)
-                }
-                
-                Spacer()
-                
-                Text(weekRangeText)
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                
-                Spacer()
-                
-                Button(action: nextWeek) {
-                    Image(systemName: "chevron.right")
-                        .font(.title2)
-                        .foregroundColor(.blue)
-                }
-            }
-            .padding(.horizontal)
-            
-            // Week days grid
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 7), spacing: 8) {
-                ForEach(weekDays, id: \.self) { date in
-                    WeekDayView(
-                        date: date,
-                        isSelected: calendar.isDate(date, inSameDayAs: selectedDate),
-                        isToday: calendar.isDateInToday(date),
-                        entries: getEntriesForDate(date)
-                    )
-                    .onTapGesture {
-                        selectedDate = date
-                    }
-                }
-            }
-            .padding(.horizontal)
-            
-            Spacer()
-        }
-        .padding(.vertical)
-    }
-    
-    private func previousWeek() {
-        withAnimation(.easeInOut(duration: 0.3)) {
-            selectedDate = calendar.date(byAdding: .weekOfYear, value: -1, to: selectedDate) ?? selectedDate
-        }
-    }
-    
-    private func nextWeek() {
-        withAnimation(.easeInOut(duration: 0.3)) {
-            selectedDate = calendar.date(byAdding: .weekOfYear, value: 1, to: selectedDate) ?? selectedDate
-        }
-    }
-    
-    private func getEntriesForDate(_ date: Date) -> [JournalEntry] {
-        let dateKey = dateString(from: date)
-        return entriesPerDate[dateKey] ?? []
-    }
-    
-    private func dateString(from date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
-    }
-}
-
-struct WeekDayView: View {
-    let date: Date
-    let isSelected: Bool
-    let isToday: Bool
-    let entries: [JournalEntry]
-    
-    private var dayNumber: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "d"
-        return formatter.string(from: date)
-    }
-    
-    private var weekdayName: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEE"
-        return formatter.string(from: date)
-    }
-    
-    private var realCount: Int {
-        entries.filter { $0.entryType == .userWritten }.count
-    }
-    
-    private var aiCount: Int {
-        entries.filter { $0.entryType == .aiGenerated || $0.entryType == .aiEnhanced }.count
-    }
-    
-    private var backgroundColor: Color {
-        if !entries.isEmpty {
-            if realCount > 0 && aiCount > 0 {
-                return .clear // Will use split background
-            } else if realCount > 0 {
-                return .blue.opacity(0.3)
-            } else {
-                return .orange.opacity(0.3)
-            }
-        } else {
-            return .clear
-        }
-    }
-    
-    private var textColor: Color {
-        return .primary
-    }
-    
-    var body: some View {
-        VStack(spacing: 8) {
-            Text(weekdayName)
-                .font(.caption2)
-                .fontWeight(.medium)
-                .foregroundColor(.secondary)
-            
-            ZStack {
-                // Background
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(backgroundColor)
-                    .frame(height: 80)
-                
-                // Split background for mixed entries
-                if realCount > 0 && aiCount > 0 && !isSelected {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(.orange.opacity(0.3))
-                        
-                        Path { path in
-                            path.move(to: CGPoint(x: 0, y: 0))
-                            path.addLine(to: CGPoint(x: 80, y: 0))
-                            path.addLine(to: CGPoint(x: 0, y: 80))
-                            path.closeSubpath()
-                        }
-                        .fill(.blue.opacity(0.3))
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .frame(height: 80)
-                }
-                
-                // Today indicator
-                if isToday {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(.blue, lineWidth: 2)
-                        .frame(height: 80)
-                }
-                
-                // Selection indicator
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(.blue, lineWidth: 4)
-                        .frame(height: 80)
-                }
-                
-                // Content
-                VStack(spacing: 4) {
-                    Text(dayNumber)
-                        .font(.title3)
-                        .fontWeight(isToday ? .bold : .medium)
-                        .foregroundColor(textColor)
-                    
-                    if !entries.isEmpty {
-                        VStack(spacing: 2) {
-                            Text("\(entries.count)")
-                                .font(.caption2)
-                                .fontWeight(.bold)
-                                .foregroundColor(textColor.opacity(0.8))
-                            
-                            if realCount > 0 && aiCount > 0 {
-                                HStack(spacing: 4) {
-                                    Text("\(realCount)")
-                                        .font(.caption2)
-                                        .foregroundColor(.blue)
-                                    Text("/")
-                                        .font(.caption2)
-                                        .foregroundColor(textColor.opacity(0.5))
-                                    Text("\(aiCount)")
-                                        .font(.caption2)
-                                        .foregroundColor(.orange)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 struct YearCalendarView: View {
     @Binding var selectedDate: Date
@@ -469,12 +180,6 @@ struct YearCalendarView: View {
     private let yearFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy"
-        return formatter
-    }()
-    
-    private let monthFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM"
         return formatter
     }()
     
@@ -491,7 +196,7 @@ struct YearCalendarView: View {
     }
     
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             // Year header with navigation
             HStack {
                 Button(action: previousYear) {
@@ -516,20 +221,59 @@ struct YearCalendarView: View {
             }
             .padding(.horizontal)
             
-            // Month grid
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 16) {
+            // Legend moved to top after year header
+            HStack(spacing: 20) {
+                HStack(spacing: 6) {
+                    Rectangle()
+                        .fill(.blue.opacity(0.3))
+                        .frame(width: 12, height: 12)
+                    Text("Real Entries")
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                }
+                
+                HStack(spacing: 6) {
+                    Rectangle()
+                        .fill(.orange.opacity(0.3))
+                        .frame(width: 12, height: 12)
+                    Text("AI Entries")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
+                
+                HStack(spacing: 6) {
+                    Rectangle()
+                        .fill(.orange.opacity(0.3))
+                        .frame(width: 12, height: 12)
+                        .overlay(
+                            Path { path in
+                                path.move(to: CGPoint(x: 0, y: 0))
+                                path.addLine(to: CGPoint(x: 12, y: 0))
+                                path.addLine(to: CGPoint(x: 0, y: 12))
+                                path.closeSubpath()
+                            }
+                            .fill(.blue.opacity(0.3))
+                        )
+                    Text("Mixed")
+                        .font(.caption)
+                        .foregroundColor(.primary)
+                }
+                
+                Spacer()
+            }
+            .padding(.horizontal)
+            .padding(.top, 8)
+            
+            // Mini month calendars in 4x3 grid (smaller with wider margins)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 12) {
                 ForEach(monthsInYear, id: \.self) { month in
-                    MonthSummaryView(
+                    MiniMonthView(
                         month: month,
                         selectedDate: $selectedDate,
                         entriesPerDate: entriesPerDate
                     )
-                    .onTapGesture {
-                        selectedDate = month
-                    }
                 }
             }
-            .padding(.horizontal)
             
             Spacer()
         }
@@ -549,7 +293,7 @@ struct YearCalendarView: View {
     }
 }
 
-struct MonthSummaryView: View {
+struct MiniMonthView: View {
     let month: Date
     @Binding var selectedDate: Date
     let entriesPerDate: [String: [JournalEntry]]
@@ -561,101 +305,159 @@ struct MonthSummaryView: View {
         return formatter
     }()
     
-    private var isCurrentMonth: Bool {
-        calendar.isDate(month, equalTo: Date(), toGranularity: .month)
-    }
+    private let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
     
-    private var isSelectedMonth: Bool {
-        calendar.isDate(month, equalTo: selectedDate, toGranularity: .month)
-    }
-    
-    private var entriesInMonth: [JournalEntry] {
-        let monthStart = calendar.dateInterval(of: .month, for: month)?.start ?? month
-        let monthEnd = calendar.dateInterval(of: .month, for: month)?.end ?? month
+    private var daysInMonth: [Date?] {
+        guard let monthInterval = calendar.dateInterval(of: .month, for: month) else {
+            return []
+        }
         
-        return entriesPerDate.values.flatMap { $0 }.filter { entry in
-            entry.createdDate >= monthStart && entry.createdDate < monthEnd
+        let firstOfMonth = monthInterval.start
+        let firstWeekday = calendar.component(.weekday, from: firstOfMonth)
+        let daysToSubtract = firstWeekday - 1
+        
+        var days: [Date?] = []
+        
+        // Add empty days for the beginning of the month
+        for _ in 0..<daysToSubtract {
+            days.append(nil)
         }
-    }
-    
-    private var filteredEntriesInMonth: [JournalEntry] {
-        return entriesInMonth // Show all entries without filtering
-    }
-    
-    private var realCount: Int {
-        entriesInMonth.filter { $0.entryType == .userWritten }.count
-    }
-    
-    private var aiCount: Int {
-        entriesInMonth.filter { $0.entryType == .aiGenerated || $0.entryType == .aiEnhanced }.count
-    }
-    
-    private var backgroundColor: Color {
-        if isSelectedMonth {
-            return .blue.opacity(0.2)
-        } else if isCurrentMonth {
-            return .blue.opacity(0.1)
-        } else {
-            return Color(.systemBackground)
+        
+        // Add actual days of the month
+        var currentDate = firstOfMonth
+        while currentDate < monthInterval.end {
+            days.append(currentDate)
+            currentDate = calendar.date(byAdding: .day, value: 1, to: currentDate) ?? currentDate
         }
+        
+        // Fill remaining slots to complete the grid (6 rows x 7 days = 42 total)
+        while days.count < 42 {
+            days.append(nil)
+        }
+        
+        return days
     }
     
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 3) {
+            // Month name
             Text(monthFormatter.string(from: month))
-                .font(.headline)
-                .fontWeight(isCurrentMonth ? .bold : .medium)
-                .foregroundColor(isSelectedMonth ? .blue : .primary)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundColor(.primary)
             
-            VStack(spacing: 4) {
-                if filteredEntriesInMonth.isEmpty {
-                    Text("No entries")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .italic()
-                } else {
-                    Text("\(filteredEntriesInMonth.count) entries")
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundColor(.primary)
-                    
-                    if realCount > 0 && aiCount > 0 {
-                        HStack(spacing: 8) {
-                            HStack(spacing: 2) {
-                                Circle()
-                                    .fill(.blue)
-                                    .frame(width: 4, height: 4)
-                                Text("\(realCount)")
-                                    .font(.caption2)
-                                    .foregroundColor(.blue)
-                            }
-                            HStack(spacing: 2) {
-                                Circle()
-                                    .fill(.orange)
-                                    .frame(width: 4, height: 4)
-                                Text("\(aiCount)")
-                                    .font(.caption2)
-                                    .foregroundColor(.orange)
-                            }
+            // Compact grid showing only actual month days
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(10), spacing: 1), count: 7), spacing: 1) {
+                ForEach(Array(daysInMonth.enumerated()), id: \.offset) { _, day in
+                    if let day = day {
+                        MiniDayView(
+                            date: day,
+                            isSelected: calendar.isDate(day, inSameDayAs: selectedDate),
+                            isToday: calendar.isDateInToday(day),
+                            entries: getEntriesForDate(day)
+                        )
+                        .onTapGesture {
+                            selectedDate = day
                         }
+                    } else {
+                        // Empty spacer for proper weekday alignment (transparent)
+                        Rectangle()
+                            .fill(Color.clear)
+                            .frame(width: 10, height: 10)
                     }
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.vertical, 12)
-        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 4)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(backgroundColor)
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(.systemGray6).opacity(0.2))
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(isSelectedMonth ? .blue : Color.gray.opacity(0.2), lineWidth: isSelectedMonth ? 2 : 1)
-        )
-        .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+    }
+    
+    private func getEntriesForDate(_ date: Date) -> [JournalEntry] {
+        let dateKey = dateFormatter.string(from: date)
+        return entriesPerDate[dateKey] ?? []
     }
 }
+
+struct MiniDayView: View {
+    let date: Date
+    let isSelected: Bool
+    let isToday: Bool
+    let entries: [JournalEntry]
+    
+    private let calendar = Calendar.current
+    
+    private var dayNumber: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d"
+        return formatter.string(from: date)
+    }
+    
+    private var realCount: Int {
+        entries.filter { $0.entryType == .userWritten }.count
+    }
+    
+    private var aiCount: Int {
+        entries.filter { $0.entryType == .aiGenerated || $0.entryType == .aiEnhanced }.count
+    }
+    
+    
+    var body: some View {
+        ZStack {
+            // Cell background with entry type colors (like month view)
+            if !entries.isEmpty {
+                if realCount > 0 && aiCount > 0 {
+                    // Mixed entries - split triangle fill (same opacity as pure real entries)
+                    Rectangle()
+                        .fill(.orange.opacity(0.3))
+                        .overlay(
+                            Path { path in
+                                path.move(to: CGPoint(x: 0, y: 0))
+                                path.addLine(to: CGPoint(x: 10, y: 0))
+                                path.addLine(to: CGPoint(x: 0, y: 10))
+                                path.closeSubpath()
+                            }
+                            .fill(.blue.opacity(0.3))
+                        )
+                } else if realCount > 0 {
+                    // Real entries only
+                    Rectangle()
+                        .fill(.blue.opacity(0.3))
+                } else {
+                    // AI entries only
+                    Rectangle()
+                        .fill(.orange.opacity(0.3))
+                }
+            } else {
+                // Empty day - light background
+                Rectangle()
+                    .fill(Color(.systemGray6).opacity(0.3))
+            }
+            
+            // Light grey borders
+            Rectangle()
+                .stroke(Color(.systemGray4), lineWidth: 0.5)
+            
+            // Selection indicator
+            if isSelected {
+                Rectangle()
+                    .stroke(.blue, lineWidth: 2)
+            } else if isToday {
+                Rectangle()
+                    .stroke(.blue.opacity(0.7), lineWidth: 1.5)
+            }
+        }
+        .frame(width: 10, height: 10)
+    }
+}
+
 
 struct EntryRowView: View {
     let entry: JournalEntry

@@ -58,8 +58,10 @@ struct SettingsView: View {
     @EnvironmentObject private var settings: GaslightSettings
     @Environment(\.modelContext) private var modelContext
     @StateObject private var aiGenerator = AIEntryGenerator.shared
-    @StateObject private var coreMLGenerator = CoreMLTextGenerator.shared
+    @StateObject private var groqGenerator = GroqAIGenerator.shared
     @State private var showingFileImporter = false
+    @State private var showingAPIKeyAlert = false
+    @State private var tempAPIKey = ""
     @State private var testPrompts: [String] = []
     @State private var isTestingCustomPrompts = false
     
@@ -115,31 +117,62 @@ struct SettingsView: View {
                 
                 Section {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("On-Device AI")
+                        Text("AI Mode")
                             .font(.subheadline)
                         
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Device Capability")
+                        Text("Using Groq API for AI generation")
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                        
+                        if aiGenerator.generationMode == .groq {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text("Groq API Key")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    
+                                    Spacer()
+                                    
+                                    Text(groqGenerator.apiKey.isEmpty ? "❌ Not Set" : "✅ Configured")
+                                        .font(.caption)
+                                        .foregroundColor(groqGenerator.apiKey.isEmpty ? .red : .green)
+                                }
+                                
+                                Button(groqGenerator.apiKey.isEmpty ? "Add API Key" : "Update API Key") {
+                                    tempAPIKey = groqGenerator.apiKey
+                                    showingAPIKeyAlert = true
+                                }
                                 .font(.caption)
-                                .foregroundColor(.secondary)
-                            
-                            Text(DeviceCapabilityDetector.shared.aiCapabilityTier.description + " Tier")
-                                .font(.caption)
-                                .foregroundColor(.green)
-                            
-                            Text("AI Backend: \(OnDeviceAIGenerator.shared.currentBackend.description)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            
-                            Text(OnDeviceAIGenerator.shared.modelStatus)
-                                .font(.caption)
-                                .foregroundColor(OnDeviceAIGenerator.shared.isModelLoaded ? .green : .orange)
+                                .foregroundColor(.blue)
+                                
+                                if !groqGenerator.apiKey.isEmpty {
+                                    HStack {
+                                        Text("Model: \(groqGenerator.selectedModel.displayName)")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                        
+                                        Spacer()
+                                        
+                                        Button("Test Connection") {
+                                            testGroqConnection()
+                                        }
+                                        .font(.caption2)
+                                        .foregroundColor(.orange)
+                                        
+                                        Button("Delete Key") {
+                                            groqGenerator.deleteAPIKey()
+                                        }
+                                        .font(.caption2)
+                                        .foregroundColor(.red)
+                                    }
+                                }
+                            }
                         }
                     }
                 } header: {
                     Text("AI Engine")
                 } footer: {
-                    Text("Your device automatically uses the best available AI for journal generation. Premium devices get sophisticated on-device AI, while all devices get enhanced templates with perfect text quality.")
+                    Text("Groq provides fast, high-quality AI generation. Get your free API key at console.groq.com/keys. Your API key is stored securely in the iOS Keychain.")
                 }
                 
                 Section {
@@ -189,6 +222,22 @@ struct SettingsView: View {
                 allowsMultipleSelection: false
             ) { result in
                 handleFileImport(result)
+            }
+            .alert("Groq API Key", isPresented: $showingAPIKeyAlert) {
+                TextField("gsk_...", text: $tempAPIKey)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                
+                Button("Save") {
+                    groqGenerator.saveAPIKey(tempAPIKey)
+                }
+                .disabled(tempAPIKey.isEmpty)
+                
+                Button("Cancel", role: .cancel) {
+                    tempAPIKey = ""
+                }
+            } message: {
+                Text("Enter your Groq API key from console.groq.com/keys. It will be stored securely in the iOS Keychain with hardware-backed encryption.")
             }
         }
     }
@@ -284,6 +333,15 @@ struct SettingsView: View {
         }
     }
     
+    private func testGroqConnection() {
+        Task {
+            let success = await groqGenerator.testConnection()
+            await MainActor.run {
+                print(success ? "✅ Groq connection successful" : "❌ Groq connection failed")
+            }
+        }
+    }
+    
     private func generateRealisticUserContent(for date: Date) -> String {
         let userContents = [
             "work was actually ok today. got stuff done for once",
@@ -342,9 +400,7 @@ struct SettingsView: View {
         
         Task {
             let modes: [(AIGenerationMode, String)] = [
-                (.templates, "Templates"),
-                (.coreML, "Core ML"),
-                (.hybrid, "Hybrid")
+                (.groq, "Groq API")
             ]
             
             let realityLevels = [0.1, 0.5, 0.9]
@@ -369,7 +425,7 @@ struct SettingsView: View {
                         }
                         
                         // Small delay to prevent overwhelming the system
-                        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds for API calls
                     }
                 }
             }
