@@ -42,9 +42,10 @@ struct ThemeSlidersView: View {
                         .font(.caption2)
                         .fontWeight(.semibold)
                         .foregroundColor(.purple)
+                        .frame(width: 60, alignment: .leading)
                     
-                    ZStack {
-                        // Gradient background
+                    ZStack(alignment: .leading) {
+                        // Gradient background track
                         RoundedRectangle(cornerRadius: 3)
                             .fill(
                                 LinearGradient(
@@ -55,19 +56,44 @@ struct ThemeSlidersView: View {
                             )
                             .frame(height: 6)
                         
-                        // Slider on top
-                        Slider(value: $groqGenerator.realityLevel, in: 0...1, step: 0.1)
-                            .accentColor(.white)
-                            .onChange(of: groqGenerator.realityLevel) { _, _ in
-                                addHapticFeedback()
-                                onSliderChange()
+                        // Custom slider implementation with drag gesture
+                        GeometryReader { geometry in
+                            ZStack(alignment: .leading) {
+                                // Custom rectangular thumb
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Color.white)
+                                    .frame(width: 24, height: 16)
+                                    .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                                    .offset(x: CGFloat(groqGenerator.realityLevel) * (geometry.size.width - 24))
+                                    .gesture(
+                                        DragGesture()
+                                            .onChanged { value in
+                                                let newValue = min(max(0, value.location.x / geometry.size.width), 1)
+                                                let steppedValue = round(newValue * 10) / 10
+                                                groqGenerator.realityLevel = steppedValue
+                                                addHapticFeedback()
+                                            }
+                                            .onEnded { _ in
+                                                onSliderChange()
+                                            }
+                                    )
                             }
+                        }
+                        .frame(height: 20)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            TapGesture()
+                                .onEnded { _ in
+                                    // Handle tap on track - will be handled by DragGesture instead
+                                }
+                        )
                     }
                     
                     Text("Real")
                         .font(.caption2)
                         .fontWeight(.semibold)
                         .foregroundColor(.blue)
+                        .frame(width: 50, alignment: .trailing)
                 }
             }
             
@@ -88,9 +114,10 @@ struct ThemeSlidersView: View {
                         .font(.caption2)
                         .fontWeight(.semibold)
                         .foregroundColor(.pink)
+                        .frame(width: 60, alignment: .leading)
                     
-                    ZStack {
-                        // Gradient background
+                    ZStack(alignment: .leading) {
+                        // Gradient background track
                         RoundedRectangle(cornerRadius: 3)
                             .fill(
                                 LinearGradient(
@@ -101,19 +128,44 @@ struct ThemeSlidersView: View {
                             )
                             .frame(height: 6)
                         
-                        // Slider on top
-                        Slider(value: $groqGenerator.emotionalLevel, in: 0...1, step: 0.1)
-                            .accentColor(.white)
-                            .onChange(of: groqGenerator.emotionalLevel) { _, _ in
-                                addHapticFeedback()
-                                onSliderChange()
+                        // Custom slider implementation with drag gesture
+                        GeometryReader { geometry in
+                            ZStack(alignment: .leading) {
+                                // Custom rectangular thumb
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Color.white)
+                                    .frame(width: 24, height: 16)
+                                    .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                                    .offset(x: CGFloat(groqGenerator.emotionalLevel) * (geometry.size.width - 24))
+                                    .gesture(
+                                        DragGesture()
+                                            .onChanged { value in
+                                                let newValue = min(max(0, value.location.x / geometry.size.width), 1)
+                                                let steppedValue = round(newValue * 10) / 10
+                                                groqGenerator.emotionalLevel = steppedValue
+                                                addHapticFeedback()
+                                            }
+                                            .onEnded { _ in
+                                                onSliderChange()
+                                            }
+                                    )
                             }
+                        }
+                        .frame(height: 20)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            TapGesture()
+                                .onEnded { _ in
+                                    // Handle tap on track - will be handled by DragGesture instead
+                                }
+                        )
                     }
                     
                     Text("Inspired")
                         .font(.caption2)
                         .fontWeight(.semibold)
                         .foregroundColor(.green)
+                        .frame(width: 50, alignment: .trailing)
                 }
             }
             
@@ -134,9 +186,10 @@ struct ThemeSlidersView: View {
                         .font(.caption2)
                         .fontWeight(.semibold)
                         .foregroundColor(.cyan)
+                        .frame(width: 60, alignment: .leading)
                     
-                    ZStack {
-                        // Gradient background
+                    ZStack(alignment: .leading) {
+                        // Gradient background track
                         RoundedRectangle(cornerRadius: 3)
                             .fill(
                                 LinearGradient(
@@ -147,19 +200,44 @@ struct ThemeSlidersView: View {
                             )
                             .frame(height: 6)
                         
-                        // Slider on top
-                        Slider(value: $groqGenerator.toneLevel, in: 0...1, step: 0.1)
-                            .accentColor(.white)
-                            .onChange(of: groqGenerator.toneLevel) { _, _ in
-                                addHapticFeedback()
-                                onSliderChange()
+                        // Custom slider implementation with drag gesture
+                        GeometryReader { geometry in
+                            ZStack(alignment: .leading) {
+                                // Custom rectangular thumb
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Color.white)
+                                    .frame(width: 24, height: 16)
+                                    .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                                    .offset(x: CGFloat(groqGenerator.toneLevel) * (geometry.size.width - 24))
+                                    .gesture(
+                                        DragGesture()
+                                            .onChanged { value in
+                                                let newValue = min(max(0, value.location.x / geometry.size.width), 1)
+                                                let steppedValue = round(newValue * 10) / 10
+                                                groqGenerator.toneLevel = steppedValue
+                                                addHapticFeedback()
+                                            }
+                                            .onEnded { _ in
+                                                onSliderChange()
+                                            }
+                                    )
                             }
+                        }
+                        .frame(height: 20)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            TapGesture()
+                                .onEnded { _ in
+                                    // Handle tap on track - will be handled by DragGesture instead
+                                }
+                        )
                     }
                     
                     Text("Energetic")
                         .font(.caption2)
                         .fontWeight(.semibold)
                         .foregroundColor(.red)
+                        .frame(width: 50, alignment: .trailing)
                 }
             }
             
